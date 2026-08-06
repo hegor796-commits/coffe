@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Зерно — предзаказ кофе (демо)</title>
+<title>Ваша кофейня — предзаказ кофе (демо)</title>
 </head>
 <body>
 <style>
@@ -309,10 +309,10 @@
   <div class="topbar">
     <div class="brandline">
       <div class="brand">
-        <div class="bean">З</div>
+        <div class="bean">☕</div>
         <div>
-          <div class="name">Зерно</div>
-          <div class="sub">спешелти-кофе · Покровка</div>
+          <div class="name">Ваша кофейня</div>
+          <div class="sub">предзаказ кофе · демо</div>
         </div>
       </div>
       <span class="demo-tag">Демо</span>
@@ -340,7 +340,7 @@
     return (Number.isInteger(r) ? r.toString() : r.toFixed(2)) + " ₽";
   };
 
-  // ---- Меню придуманной кофейни «Зерно» ----
+  // ---- Демо-меню ----
   var MOD = {
     size: { id: "size", name: "Объём", opts: [
       { id: "s", name: "250 мл", price: 0 }, { id: "m", name: "350 мл", price: 4000 }, { id: "l", name: "450 мл", price: 7000 } ] },
@@ -493,7 +493,7 @@ made(active, "orders", "📋", "Заказы", 0) +
   function guestMenu() {
     var html = '<div class="pad">';
     html += '<div class="h1">Меню</div>';
-    html += '<div class="locrow"><span class="dot-open"></span> Зерно на Покровке · ул. Покровка, 12 · открыто до 22:00</div>';
+    html += '<div class="locrow"><span class="dot-open"></span> Ваша кофейня · ул. Примерная, 1 · открыто до 22:00</div>';
     MENU.forEach(function (c) {
       html += '<div class="h2">' + c.cat + '</div>';
       c.items.forEach(function (it) {
@@ -701,7 +701,7 @@ made(active, "orders", "📋", "Заказы", 0) +
 
     var html = '<div class="pad">';
     html += '<div class="rowbtn"><div class="h1">Заказы' + (newCount ? ' <span class="statuspill" style="background:var(--accent);color:var(--accent-ink);font-size:12px;vertical-align:middle">' + newCount + ' новых</span>' : '') + '</div></div>';
-    html += '<div class="locrow"><span class="dot-open"></span> Зерно на Покровке · смена открыта</div>';
+    html += '<div class="locrow"><span class="dot-open"></span> Ваша кофейня · смена открыта</div>';
 
     if (!active.length) {
       html += '<div class="emptyc"><div class="big">✅</div>Активных заказов нет<br><span class="small">Оформите заказ в роли «Гость», чтобы увидеть, как он прилетает сюда</span></div>';
