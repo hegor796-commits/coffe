@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Зерно — предзаказ кофе (демо)</title>
+</head>
+<body>
+<style>
+  :root {
+    --bg: #f6f3ec;
+    --backdrop: #e7e1d5;
+    --surface: #ffffff;
+    --surface-2: #f2eee6;
+    --ink: #1f1b15;
+    --muted: #8c8477;
+    --line: #e7e1d5;
+    --accent: #3c6e47;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(60, 110, 71, 0.12);
+    --success: #2e7d5b;
+    --warning: #b9791f;
+    --danger: #bd453d;
+    --danger-soft: rgba(189, 69, 61, 0.12);
+    --shadow: 0 1px 2px rgba(31, 27, 21, 0.05), 0 8px 24px rgba(31, 27, 21, 0.06);
+    --sheet-shadow: 0 -8px 40px rgba(31, 27, 21, 0.22);
+    --radius: 16px;
+    --serif: Georgia, "Times New Roman", ui-serif, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17140f;
+      --backdrop: #0d0b08;
+      --surface: #211c15;
+      --surface-2: #2a241b;
+      --ink: #f1ebe0;
+      --muted: #9a9184;
+      --line: #322b21;
+      --accent: #6cae78;
+      --accent-ink: #12210f;
+      --accent-soft: rgba(108, 174, 120, 0.16);
+      --success: #63b98f;
+      --warning: #d3a04a;
+      --danger: #e0756c;
+      --danger-soft: rgba(224, 117, 108, 0.16);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.4);
+      --sheet-shadow: 0 -8px 40px rgba(0, 0, 0, 0.55);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f3ec; --backdrop: #e7e1d5; --surface: #ffffff; --surface-2: #f2eee6;
+    --ink: #1f1b15; --muted: #8c8477; --line: #e7e1d5;
+    --accent: #3c6e47; --accent-ink: #ffffff; --accent-soft: rgba(60,110,71,0.12);
+    --success: #2e7d5b; --warning: #b9791f; --danger: #bd453d; --danger-soft: rgba(189,69,61,0.12);
+    --shadow: 0 1px 2px rgba(31,27,21,0.05), 0 8px 24px rgba(31,27,21,0.06);
+    --sheet-shadow: 0 -8px 40px rgba(31,27,21,0.22);
+  }
+  :root[data-theme="dark"] {
+    --bg: #17140f; --backdrop: #0d0b08; --surface: #211c15; --surface-2: #2a241b;
+    --ink: #f1ebe0; --muted: #9a9184; --line: #322b21;
+    --accent: #6cae78; --accent-ink: #12210f; --accent-soft: rgba(108,174,120,0.16);
+    --success: #63b98f; --warning: #d3a04a; --danger: #e0756c; --danger-soft: rgba(224,117,108,0.16);
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.4);
+    --sheet-shadow: 0 -8px 40px rgba(0,0,0,0.55);
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    background: var(--backdrop);
+    color: var(--ink);
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; }
+
+  /* Phone frame */
+  .frame {
+    position: relative;
+    max-width: 430px;
+    margin: 0 auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  @media (min-width: 520px) {
+    body { padding: 26px 16px; }
+    .frame {
+      min-height: calc(100dvh - 52px);
+      border-radius: 40px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.28), 0 0 0 10px rgba(0,0,0,0.06);
+      border: 1px solid var(--line);
+    }
+  }
+
+  /* Top bar: brand + role switch */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 16px 8px;
+  }
+  .brandline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .brand .bean {
+    width: 30px; height: 30px; border-radius: 9px; flex: none;
+    background: var(--accent); color: var(--accent-ink);
+    display: grid; place-items: center; font-family: var(--serif); font-weight: 700; font-size: 17px;
+  }
+  .brand .name { font-family: var(--serif); font-weight: 700; font-size: 19px; letter-spacing: 0.2px; }
+  .brand .sub { font-size: 11.5px; color: var(--muted); margin-top: -3px; }
+  .demo-tag {
+    font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--warning); border: 1px solid currentColor; border-radius: 999px; padding: 2px 7px; flex: none;
+  }
+  .roleswitch {
+    margin-top: 9px; display: flex; gap: 3px; background: var(--surface-2);
+    border-radius: 11px; padding: 3px;
+  }
+  .roleswitch button {
+    flex: 1; border: none; background: transparent; color: var(--muted);
+    padding: 8px 6px; border-radius: 8px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .roleswitch button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+
+  /* Scroll area */
+  .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .pad { padding: 14px 16px 24px; }
+
+  .h1 { font-size: 21px; font-weight: 700; margin: 4px 0 2px; letter-spacing: -0.2px; }
+  .h2 { font-family: var(--serif); font-size: 15px; font-weight: 700; margin: 20px 0 9px; letter-spacing: .2px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  .locrow { display: flex; align-items: center; gap: 8px; margin-top: 3px; font-size: 13px; color: var(--muted); }
+  .dot-open { width: 7px; height: 7px; border-radius: 50%; background: var(--success); flex: none; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  /* Menu item */
+  .item {
+    width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 14px; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 12px; cursor: pointer; color: var(--ink);
+    transition: transform .08s ease;
+  }
+  .item:active { transform: scale(0.99); }
+  .item[disabled] { opacity: .5; cursor: default; }
+  .item .thumb {
+    width: 44px; height: 44px; border-radius: 12px; flex: none; display: grid; place-items: center;
+    background: var(--accent-soft); font-size: 22px;
+  }
+  .item .body { flex: 1; min-width: 0; }
+  .item .title { font-weight: 600; font-size: 15.5px; }
+  .item .desc { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+  .item .price { font-weight: 700; font-size: 15px; white-space: nowrap; }
+  .stopflag { font-size: 11px; color: var(--danger); font-weight: 600; }
+
+  /* Bottom tab bar (guest) */
+  .tabbar {
+    display: flex; border-top: 1px solid var(--line); background: var(--bg);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tabbar button {
+    flex: 1; border: none; background: transparent; color: var(--muted);
+    padding: 9px 0 8px; font-size: 11px; font-weight: 600; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+  }
+  .tabbar button .ic { font-size: 19px; line-height: 1; }
+  .tabbar button[aria-selected="true"] { color: var(--accent); }
+  .tabbar .badge {
+    position: absolute; transform: translate(14px,-4px); background: var(--accent); color: var(--accent-ink);
+    font-size: 10px; font-weight: 700; border-radius: 999px; padding: 1px 5px; min-width: 16px;
+  }
+
+  /* Buttons */
+  .btn {
+    appearance: none; border: none; border-radius: 13px; padding: 14px 16px; font-size: 15.5px;
+    font-weight: 700; background: var(--accent); color: var(--accent-ink); cursor: pointer; width: 100%;
+    transition: transform .08s ease, opacity .15s;
+  }
+  .btn:active { transform: scale(0.985); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn.sec { background: var(--surface-2); color: var(--ink); }
+  .btn.dgr { background: var(--danger); color: #fff; }
+  .btn.sm { padding: 10px 12px; font-size: 14px; border-radius: 11px; width: auto; }
+  .btn.ghost { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  .rowbtn { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+  /* Sticky action bar */
+  .actionbar {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line); background: var(--bg);
+  }
+
+  /* Bottom sheet */
+  .sheet-scrim {
+    position: absolute; inset: 0; z-index: 40; background: rgba(10,8,6,0.45);
+    opacity: 0; pointer-events: none; transition: opacity .2s ease;
+  }
+  .sheet-scrim.open { opacity: 1; pointer-events: auto; }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 41;
+    background: var(--bg); border-radius: 22px 22px 0 0; box-shadow: var(--sheet-shadow);
+    transform: translateY(100%); transition: transform .26s cubic-bezier(.2,.8,.2,1);
+    max-height: 88%; display: flex; flex-direction: column;
+  }
+  .sheet.open { transform: translateY(0); }
+  .sheet .grabber { width: 40px; height: 4px; border-radius: 3px; background: var(--line); margin: 9px auto 2px; flex: none; }
+  .sheet .sheet-scroll { overflow-y: auto; padding: 8px 16px 12px; }
+
+  .opt {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 2px; border-bottom: 1px solid var(--line); cursor: pointer;
+  }
+  .opt:last-child { border-bottom: none; }
+  .opt .mark {
+    width: 21px; height: 21px; border-radius: 50%; border: 2px solid var(--line); flex: none;
+    display: grid; place-items: center; transition: border-color .12s;
+  }
+  .opt[data-sel="1"] .mark { border-color: var(--accent); }
+  .opt[data-sel="1"] .mark::after { content: ""; width: 11px; height: 11px; border-radius: 50%; background: var(--accent); }
+  .opt .optname { flex: 1; }
+  .opt .optprice { color: var(--muted); font-size: 13.5px; }
+
+  /* Quantity stepper */
+  .qty { display: inline-flex; align-items: center; gap: 14px; }
+  .qty button {
+    width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--accent-soft);
+    color: var(--accent); font-size: 20px; line-height: 1; cursor: pointer;
+  }
+  .qty .n { min-width: 18px; text-align: center; font-weight: 700; }
+
+  /* Cart line */
+  .cline { display: flex; gap: 12px; padding: 13px 14px; }
+  .cline .info { flex: 1; min-width: 0; }
+  .cline .cname { font-weight: 600; }
+  .cline .cmods { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+
+  /* Status tracker */
+  .track { padding: 4px 2px 2px; }
+  .steps { display: flex; align-items: flex-start; margin: 8px 0 4px; }
+  .step { flex: 1; text-align: center; position: relative; }
+  .step .bead {
+    width: 26px; height: 26px; border-radius: 50%; margin: 0 auto 6px; z-index: 2; position: relative;
+    background: var(--surface-2); color: var(--muted); display: grid; place-items: center;
+    font-size: 13px; font-weight: 700; border: 2px solid var(--line);
+  }
+  .step.done .bead { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .step.curr .bead { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .step .lbl { font-size: 11px; color: var(--muted); }
+  .step.done .lbl, .step.curr .lbl { color: var(--ink); }
+  .step::before {
+    content: ""; position: absolute; top: 13px; left: -50%; width: 100%; height: 2px; background: var(--line); z-index: 1;
+  }
+  .step:first-child::before { display: none; }
+  .step.done::before, .step.curr::before { background: var(--accent); }
+
+  .banner { border-radius: 14px; padding: 12px 14px; font-size: 14px; }
+  .banner.ok { background: var(--accent-soft); color: var(--ink); }
+  .banner.warn { background: var(--danger-soft); color: var(--ink); }
+
+  /* Barista order card */
+  .ocard {
+    background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+    border-radius: 14px; box-shadow: var(--shadow); padding: 13px 14px; margin-bottom: 12px;
+  }
+  .ocard.new { animation: pop .4s ease; }
+  @keyframes pop { 0% { transform: scale(.96); box-shadow: 0 0 0 6px var(--accent-soft); } 100% { transform: scale(1); } }
+  .ocard .ohead { display: flex; align-items: baseline; justify-content: space-between; }
+  .ocard .onum { font-size: 18px; font-weight: 800; font-family: var(--serif); }
+  .ocard .oitem { margin-top: 5px; font-size: 14.5px; }
+  .ocard .oitem .om { color: var(--muted); font-size: 12.5px; }
+  .statuspill { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+
+  .emptyc { text-align: center; color: var(--muted); padding: 48px 24px; }
+  .emptyc .big { font-size: 34px; margin-bottom: 8px; }
+
+  /* Toast */
+  .toast-host { position: absolute; left: 0; right: 0; top: 104px; z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+  .toast {
+    background: var(--ink); color: var(--bg); padding: 10px 15px; border-radius: 12px; font-size: 13.5px; font-weight: 600;
+    box-shadow: var(--shadow); transform: translateY(-14px); opacity: 0; transition: transform .25s, opacity .25s; max-width: 92%;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  .hint { font-size: 12.5px; color: var(--muted); text-align: center; margin-top: 8px; }
+  .totalrow { display: flex; justify-content: space-between; font-weight: 800; font-size: 17px; margin-top: 12px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="frame" id="frame">
+  <div class="topbar">
+    <div class="brandline">
+      <div class="brand">
+        <div class="bean">З</div>
+        <div>
+          <div class="name">Зерно</div>
+          <div class="sub">спешелти-кофе · Покровка</div>
+        </div>
+      </div>
+      <span class="demo-tag">Демо</span>
+    </div>
+    <div class="roleswitch" role="tablist">
+      <button role="tab" data-role="guest" aria-selected="true">👤 Гость</button>
+      <button role="tab" data-role="barista" aria-selected="false">☕ Бариста</button>
+    </div>
+  </div>
+
+  <div class="scroll" id="scroll"></div>
+  <div id="bottom"></div>
+
+  <div class="sheet-scrim" id="scrim"></div>
+  <div class="sheet" id="sheet"><div class="grabber"></div><div class="sheet-scroll" id="sheet-body"></div></div>
+  <div class="toast-host" id="toasts"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var money = function (k) {
+    var r = k / 100;
+    return (Number.isInteger(r) ? r.toString() : r.toFixed(2)) + " ₽";
+  };
+
+  // ---- Меню придуманной кофейни «Зерно» ----
+  var MOD = {
+    size: { id: "size", name: "Объём", opts: [
+      { id: "s", name: "250 мл", price: 0 }, { id: "m", name: "350 мл", price: 4000 }, { id: "l", name: "450 мл", price: 7000 } ] },
+    milk: { id: "milk", name: "Молоко", opts: [
+      { id: "cow", name: "Коровье", price: 0 }, { id: "oat", name: "Овсяное", price: 6000 },
+      { id: "alm", name: "Миндальное", price: 6000 }, { id: "ban", name: "Банановое", price: 7000 } ] },
+    syrup: { id: "syrup", name: "Сироп", opts: [
+      { id: "no", name: "Без сиропа", price: 0 }, { id: "van", name: "Ваниль", price: 5000 },
+      { id: "car", name: "Карамель", price: 5000 }, { id: "slt", name: "Солёная карамель", price: 6000 } ] }
+  };
+
+  var MENU = [
+    { cat: "Кофе", items: [
+      { id: "esp", name: "Эспрессо", emoji: "☕", desc: "двойной, 30 мл", base: 13000, mods: [] },
+      { id: "amer", name: "Американо", emoji: "☕", desc: "", base: 16000, mods: ["size"] },
+      { id: "capp", name: "Капучино", emoji: "☕", desc: "плотная пенка", base: 20000, mods: ["size", "milk"] },
+      { id: "latte", name: "Латте", emoji: "☕", desc: "", base: 22000, mods: ["size", "milk", "syrup"] },
+      { id: "flat", name: "Флэт-уайт", emoji: "☕", desc: "двойной шот", base: 23000, mods: ["milk"] },
+      { id: "raf", name: "Раф ванильный", emoji: "☕", desc: "на сливках", base: 27000, mods: ["size"] }
+    ]},
+    { cat: "Не кофе", items: [
+      { id: "matcha", name: "Матча-латте", emoji: "🍵", desc: "церемониальная матча", base: 26000, mods: ["size", "milk"] },
+      { id: "cocoa", name: "Какао", emoji: "🍫", desc: "с маршмеллоу", base: 19000, mods: ["milk"] },
+      { id: "tea", name: "Чай облепиха-имбирь", emoji: "🫚", desc: "0,4 л", base: 16000, mods: [] }
+    ]},
+    { cat: "Выпечка", items: [
+      { id: "crois", name: "Круассан", emoji: "🥐", desc: "сливочный", base: 15000, mods: [] },
+      { id: "cinna", name: "Синнабон", emoji: "🍥", desc: "с корицей", base: 20000, mods: [] },
+      { id: "banana", name: "Банановый хлеб", emoji: "🍌", desc: "", base: 17000, mods: [] }
+    ]}
+  ];
+
+  var ITEM_BY_ID = {};
+  MENU.forEach(function (c) { c.items.forEach(function (i) { ITEM_BY_ID[i.id] = i; }); });
+
+  var STATUSES = ["created", "accepted", "preparing", "ready", "completed"];
+  var STATUS_LABEL = { created: "Оформлен", accepted: "Принят", preparing: "Готовится", ready: "Готов", completed: "Выдан", rejected: "Отклонён" };
+  var STEP_LABEL = { created: "Оформлен", accepted: "Принят", preparing: "Готовим", ready: "Готов", completed: "Выдан" };
+
+  // ---- Хранилище (в памяти + синхронизация вкладок) ----
+  var KEY = "zerno_demo_v1";
+  var channel = null;
+  try { channel = new BroadcastChannel("zerno_demo"); } catch (e) {}
+
+  var store = {
+    role: "guest",
+    screen: "menu",
+    cart: [],
+    orders: [],
+    stopped: {},        // productId -> true
+    activeOrderId: null,
+    seq: 11
+  };
+
+  function persist() {
+    try { localStorage.setItem(KEY, JSON.stringify({ orders: store.orders, stopped: store.stopped, seq: store.seq })); } catch (e) {}
+  }
+  function broadcast() { if (channel) { try { channel.postMessage({ orders: store.orders, stopped: store.stopped, seq: store.seq }); } catch (e) {} } }
+  function loadShared() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) { var d = JSON.parse(raw); store.orders = d.orders || store.orders; store.stopped = d.stopped || {}; store.seq = d.seq || store.seq; }
+    } catch (e) {}
+  }
+  if (channel) channel.onmessage = function (e) {
+    var prevCount = store.orders.length;
+    store.orders = e.data.orders || store.orders;
+    store.stopped = e.data.stopped || store.stopped;
+    store.seq = Math.max(store.seq, e.data.seq || 0);
+    if (store.role === "barista" && store.orders.length > prevCount) notifyNewOrder();
+    render();
+  };
+
+  // ---- Расчёт позиции ----
+  function priceOf(item, sel) {
+    var p = item.base;
+    (item.mods || []).forEach(function (mid) {
+      var chosen = sel[mid]; var m = MOD[mid];
+      var o = m.opts.find(function (x) { return x.id === chosen; });
+      if (o) p += o.price;
+    });
+    return p;
+  }
+  function defaultSel(item) {
+    var s = {};
+    (item.mods || []).forEach(function (mid) { s[mid] = MOD[mid].opts[0].id; });
+    return s;
+  }
+  function selNames(item, sel) {
+    var names = [];
+    (item.mods || []).forEach(function (mid) {
+      var o = MOD[mid].opts.find(function (x) { return x.id === sel[mid]; });
+      if (o && o.price >= 0 && o.id !== MOD[mid].opts[0].id) names.push(o.name);
+      else if (o && mid === "size") names.push(o.name);
+    });
+    return names;
+  }
+
+  // ---- Seed: пара заказов, чтобы экран бариста был «живым» ----
+  function seedOrders() {
+    if (store.orders.length) return;
+    var now = Date.now();
+    store.orders = [
+      { id: "o9", number: "A-9", status: "preparing", createdAt: now - 6 * 60000, readyAt: now + 2 * 60000, comment: "",
+        items: [ { name: "Капучино", qty: 1, opts: ["350 мл", "Овсяное"], lineTotal: 26000 } ], total: 26000 },
+      { id: "o10", number: "A-10", status: "created", createdAt: now - 1 * 60000, readyAt: now + 7 * 60000, comment: "Погорячее, пожалуйста",
+        items: [ { name: "Латте", qty: 1, opts: ["450 мл", "Ваниль"], lineTotal: 34000 }, { name: "Круассан", qty: 1, opts: [], lineTotal: 15000 } ], total: 49000 }
+    ];
+    store.seq = 11;
+    persist();
+  }
+
+  // ================= RENDER =================
+  var scrollEl = document.getElementById("scroll");
+  var bottomEl = document.getElementById("bottom");
+
+  function render() {
+    document.querySelectorAll(".roleswitch button").forEach(function (b) {
+      b.setAttribute("aria-selected", b.dataset.role === store.role ? "true" : "false");
+    });
+    if (store.role === "guest") renderGuest(); else renderBarista();
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
+
+  // ---------- GUEST ----------
+  function renderGuest() {
+    if (store.screen === "menu") return guestMenu();
+    if (store.screen === "cart") return guestCart();
+    if (store.screen === "orders") return guestOrders();
+    if (store.screen === "status") return guestStatus();
+    guestMenu();
+  }
+
+  function guestTabbar(active) {
+    var cartCount = store.cart.reduce(function (n, l) { return n + l.qty; }, 0);
+    bottomEl.innerHTML =
+      '<div class="tabbar" role="tablist">' +
+made(active, "menu", "🧾", "Меню", 0) +
+made(active, "cart", "🛒", "Корзина", cartCount) +
+made(active, "orders", "📋", "Заказы", 0) +
+      '</div>';
+    function made(act, id, ic, lbl, badge) {
+      return '<button data-tab="' + id + '" aria-selected="' + (act === id) + '">' +
+        (badge ? '<span class="badge">' + badge + '</span>' : '') +
+        '<span class="ic">' + ic + '</span>' + lbl + '</button>';
+    }
+  }
+
+  function guestMenu() {
+    var html = '<div class="pad">';
+    html += '<div class="h1">Меню</div>';
+    html += '<div class="locrow"><span class="dot-open"></span> Зерно на Покровке · ул. Покровка, 12 · открыто до 22:00</div>';
+    MENU.forEach(function (c) {
+      html += '<div class="h2">' + c.cat + '</div>';
+      c.items.forEach(function (it) {
+        var stopped = !!store.stopped[it.id];
+        html += '<button class="item" data-item="' + it.id + '"' + (stopped ? " disabled" : "") + '>' +
+          '<span class="thumb">' + it.emoji + '</span>' +
+          '<span class="body"><span class="title">' + esc(it.name) + '</span>' +
+          (it.desc ? '<span class="desc">' + esc(it.desc) + '</span>' : '') +
+          (stopped ? '<span class="stopflag">нет в наличии</span>' : '') + '</span>' +
+          '<span class="price tnum">' + money(it.base) + '</span></button>';
+      });
+    });
+    html += '<div class="hint">Это демо-меню вымышленной кофейни. Оплата — при получении на кассе.</div>';
+    html += '</div>';
+    scrollEl.innerHTML = html;
+    scrollEl.scrollTop = 0;
+
+    var cartTotal = store.cart.reduce(function (s, l) { return s + l.unitPrice * l.qty; }, 0);
+    var cartCount = store.cart.reduce(function (n, l) { return n + l.qty; }, 0);
+    if (cartCount) {
+      bottomEl.innerHTML = '<div class="actionbar"><button class="btn rowbtn" data-go="cart">' +
+        '<span>Корзина · ' + cartCount + '</span><span class="tnum">' + money(cartTotal) + '</span></button></div>' +
+        tabbarHTML("menu");
+    } else {
+      guestTabbar("menu");
+    }
+  }
+
+  function tabbarHTML(active) {
+    var cartCount = store.cart.reduce(function (n, l) { return n + l.qty; }, 0);
+    return '<div class="tabbar" role="tablist">' +
+      tb("menu", "🧾", "Меню") + tb("cart", "🛒", "Корзина", cartCount) + tb("orders", "📋", "Заказы") + '</div>';
+    function tb(id, ic, lbl, badge) {
+      return '<button data-tab="' + id + '" aria-selected="' + (active === id) + '">' +
+        (badge ? '<span class="badge">' + badge + '</span>' : '') + '<span class="ic">' + ic + '</span>' + lbl + '</button>';
+    }
+  }
+
+  function guestCart() {
+    if (!store.cart.length) {
+      scrollEl.innerHTML = '<div class="emptyc"><div class="big">🛒</div>Корзина пуста<br><span class="small">Добавьте что-нибудь из меню</span></div>';
+      guestTabbar("cart");
+      return;
+    }
+    var html = '<div class="pad"><div class="h1">Корзина</div>';
+    store.cart.forEach(function (l) {
+      html += '<div class="card" style="margin-bottom:10px"><div class="cline">' +
+        '<div class="info"><div class="cname">' + esc(l.name) + '</div>' +
+        (l.optNames.length ? '<div class="cmods">' + esc(l.optNames.join(" · ")) + '</div>' : '') +
+        '<div class="qty" style="margin-top:9px"><button data-dec="' + l.key + '">−</button>' +
+        '<span class="n tnum">' + l.qty + '</span><button data-inc="' + l.key + '">+</button></div></div>' +
+        '<div class="price tnum" style="font-weight:700">' + money(l.unitPrice * l.qty) + '</div>' +
+        '</div></div>';
+    });
+    html += '<textarea id="cmt" class="card" style="width:100%;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:14px;padding:12px;resize:none;font-family:inherit;font-size:14px;margin-top:4px" rows="2" placeholder="Комментарий к заказу (необязательно)"></textarea>';
+    var total = store.cart.reduce(function (s, l) { return s + l.unitPrice * l.qty; }, 0);
+    html += '<div class="totalrow"><span>Итого</span><span class="tnum">' + money(total) + '</span></div>';
+    html += '</div>';
+    scrollEl.innerHTML = html;
+    scrollEl.scrollTop = 0;
+    bottomEl.innerHTML = '<div class="actionbar"><button class="btn" data-place="1">Оформить заказ · ' + money(total) + '</button>' +
+      '<div class="hint">Оплата при получении на кассе · готовность ~8 мин</div></div>';
+  }
+
+  function guestOrders() {
+    var mine = store.orders.slice().reverse();
+    if (!mine.length) {
+      scrollEl.innerHTML = '<div class="emptyc"><div class="big">📋</div>Заказов пока нет</div>';
+      guestTabbar("orders");
+      return;
+    }
+    var html = '<div class="pad"><div class="h1">Мои заказы</div>';
+    mine.forEach(function (o) {
+      html += '<button class="item" data-order="' + o.id + '" style="align-items:flex-start">' +
+        '<span class="thumb">' + (o.status === "ready" ? "✅" : o.status === "completed" ? "☑️" : o.status === "rejected" ? "✖️" : "⏳") + '</span>' +
+        '<span class="body"><span class="title">Заказ ' + o.number + '</span>' +
+        '<span class="desc">' + o.items.map(function (i) { return esc(i.name) + (i.qty > 1 ? " ×" + i.qty : ""); }).join(", ") + '</span></span>' +
+        '<span style="text-align:right"><span class="price tnum">' + money(o.total) + '</span>' +
+        '<br><span class="statuspill" style="background:var(--accent-soft);color:var(--ink)">' + STATUS_LABEL[o.status] + '</span></span>' +
+        '</button>';
+    });
+    html += '</div>';
+    scrollEl.innerHTML = html;
+    guestTabbar("orders");
+  }
+
+  function guestStatus() {
+    var o = store.orders.find(function (x) { return x.id === store.activeOrderId; });
+    if (!o) { store.screen = "orders"; return renderGuest(); }
+    var html = '<div class="pad"><div class="h1">Заказ ' + o.number + '</div>';
+
+    if (o.status === "rejected") {
+      html += '<div class="banner warn" style="margin:10px 0">Кофейня отклонила заказ. Деньги не списаны (оплата на кассе).</div>';
+    } else {
+      var idx = STATUSES.indexOf(o.status);
+      html += '<div class="track"><div class="steps">';
+      STATUSES.forEach(function (s, i) {
+        var cls = i < idx ? "done" : i === idx ? "curr" : "";
+        html += '<div class="step ' + cls + '"><div class="bead">' + (i < idx ? "✓" : (i + 1)) + '</div><div class="lbl">' + STEP_LABEL[s] + '</div></div>';
+      });
+      html += '</div></div>';
+      var t = new Date(o.readyAt); var hh = ("0" + t.getHours()).slice(-2), mm = ("0" + t.getMinutes()).slice(-2);
+      if (o.status === "ready") html += '<div class="banner ok" style="margin:14px 0;text-align:center">☕ Готово! Заберите на кассе — назовите номер <b>' + o.number + '</b></div>';
+      else if (o.status === "completed") html += '<div class="banner ok" style="margin:14px 0;text-align:center">Спасибо! Ждём снова 🙌</div>';
+      else html += '<div class="card" style="margin:14px 0;padding:12px 14px;text-align:center">Готовность к <b class="tnum">' + hh + ":" + mm + '</b></div>';
+    }
+
+    html += '<div class="h2">Состав</div>';
+    o.items.forEach(function (i) {
+      html += '<div class="card" style="margin-bottom:8px"><div class="cline"><div class="info"><div class="cname">' +
+        esc(i.name) + (i.qty > 1 ? " ×" + i.qty : "") + '</div>' +
+        (i.opts && i.opts.length ? '<div class="cmods">' + esc(i.opts.join(" · ")) + '</div>' : '') +
+        '</div><div class="price tnum">' + money(i.lineTotal) + '</div></div></div>';
+    });
+    if (o.comment) html += '<div class="cmods" style="margin-top:6px">💬 ' + esc(o.comment) + '</div>';
+    html += '<div class="totalrow"><span>Итого</span><span class="tnum">' + money(o.total) + '</span></div>';
+    html += '<button class="btn sec" style="margin-top:16px" data-go="orders">← Ко всем заказам</button>';
+    html += '<div class="hint">Статус обновляется сам, когда бариста двигает заказ. Переключитесь на роль «Бариста» вверху, чтобы увидеть это.</div>';
+    html += '</div>';
+    scrollEl.innerHTML = html;
+    scrollEl.scrollTop = 0;
+    bottomEl.innerHTML = "";
+  }
+
+  // ---------- BOTTOM SHEET (выбор модификаторов) ----------
+  var sheetState = null;
+  function openSheet(itemId) {
+    var item = ITEM_BY_ID[itemId];
+    sheetState = { item: item, sel: defaultSel(item), qty: 1 };
+    renderSheet();
+    document.getElementById("scrim").classList.add("open");
+    document.getElementById("sheet").classList.add("open");
+  }
+  function closeSheet() {
+    document.getElementById("scrim").classList.remove("open");
+    document.getElementById("sheet").classList.remove("open");
+    sheetState = null;
+  }
+  function renderSheet() {
+    if (!sheetState) return;
+    var item = sheetState.item, sel = sheetState.sel;
+    var html = '<div class="h1" style="margin-top:2px">' + esc(item.name) + '</div>';
+    if (item.desc) html += '<div class="muted small">' + esc(item.desc) + '</div>';
+    (item.mods || []).forEach(function (mid) {
+      var m = MOD[mid];
+      html += '<div class="h2">' + m.name + '</div>';
+      m.opts.forEach(function (o) {
+        html += '<div class="opt" data-mod="' + mid + '" data-opt="' + o.id + '" data-sel="' + (sel[mid] === o.id ? 1 : 0) + '">' +
+          '<div class="mark"></div><div class="optname">' + esc(o.name) + '</div>' +
+          '<div class="optprice">' + (o.price ? "+" + money(o.price) : "") + '</div></div>';
+      });
+    });
+    html += '<div class="rowbtn" style="margin:18px 0 4px"><div class="qty"><button data-sq="-">−</button><span class="n tnum">' + sheetState.qty + '</span><button data-sq="+">+</button></div></div>';
+    var unit = priceOf(item, sel);
+    html += '<button class="btn" data-add="1" style="margin-top:6px">В корзину · ' + money(unit * sheetState.qty) + '</button>';
+    document.getElementById("sheet-body").innerHTML = html;
+  }
+
+  function addToCart() {
+    var item = sheetState.item, sel = sheetState.sel;
+    var unit = priceOf(item, sel);
+    var optIds = (item.mods || []).map(function (m) { return sel[m]; }).join(",");
+    var key = item.id + "|" + optIds;
+    var existing = store.cart.find(function (l) { return l.key === key; });
+    if (existing) existing.qty += sheetState.qty;
+    else store.cart.push({ key: key, itemId: item.id, name: item.name, unitPrice: unit, qty: sheetState.qty, optNames: selNames(item, sel), opts: sel });
+    closeSheet();
+    toast("Добавлено в корзину");
+    render();
+  }
+
+  function placeOrder() {
+    store.seq += 1;
+    var num = "A-" + store.seq;
+    var now = Date.now();
+    var cmtEl = document.getElementById("cmt");
+    var order = {
+      id: "o" + store.seq, number: num, status: "created", createdAt: now, readyAt: now + 8 * 60000,
+      comment: cmtEl ? cmtEl.value.trim() : "",
+      items: store.cart.map(function (l) { return { name: l.name, qty: l.qty, opts: l.optNames, lineTotal: l.unitPrice * l.qty }; }),
+      total: store.cart.reduce(function (s, l) { return s + l.unitPrice * l.qty; }, 0)
+    };
+    store.orders.push(order);
+    store.cart = [];
+    store.activeOrderId = order.id;
+    store.screen = "status";
+    persist(); broadcast();
+    toast("Заказ " + num + " отправлен бариста");
+    render();
+  }
+
+  // ---------- BARISTA ----------
+  function baristaActions(status) {
+    if (status === "created") return [{ ev: "accepted", label: "Принять" }, { ev: "rejected", label: "Отклонить", cls: "dgr" }];
+    if (status === "accepted") return [{ ev: "preparing", label: "Готовить" }];
+    if (status === "preparing") return [{ ev: "ready", label: "Готово" }];
+    if (status === "ready") return [{ ev: "completed", label: "Выдан" }];
+    return [];
+  }
+
+  function renderBarista() {
+    var active = store.orders.filter(function (o) { return ["created", "accepted", "preparing", "ready"].indexOf(o.status) >= 0; });
+    active.sort(function (a, b) { return a.createdAt - b.createdAt; });
+    var newCount = store.orders.filter(function (o) { return o.status === "created"; }).length;
+
+    var html = '<div class="pad">';
+    html += '<div class="rowbtn"><div class="h1">Заказы' + (newCount ? ' <span class="statuspill" style="background:var(--accent);color:var(--accent-ink);font-size:12px;vertical-align:middle">' + newCount + ' новых</span>' : '') + '</div></div>';
+    html += '<div class="locrow"><span class="dot-open"></span> Зерно на Покровке · смена открыта</div>';
+
+    if (!active.length) {
+      html += '<div class="emptyc"><div class="big">✅</div>Активных заказов нет<br><span class="small">Оформите заказ в роли «Гость», чтобы увидеть, как он прилетает сюда</span></div>';
+    } else {
+      active.forEach(function (o) {
+        var t = new Date(o.createdAt); var hh = ("0" + t.getHours()).slice(-2), mm = ("0" + t.getMinutes()).slice(-2);
+        var pillbg = o.status === "created" ? "var(--accent)" : "var(--surface-2)";
+        var pillfg = o.status === "created" ? "var(--accent-ink)" : "var(--muted)";
+        html += '<div class="ocard' + (o.status === "created" ? " new" : "") + '">' +
+          '<div class="ohead"><span class="onum">' + o.number + '</span>' +
+          '<span class="statuspill" style="background:' + pillbg + ';color:' + pillfg + '">' + STATUS_LABEL[o.status] + '</span></div>' +
+          '<div class="muted small tnum">' + hh + ":" + mm + '</div>';
+        o.items.forEach(function (i) {
+          html += '<div class="oitem">• ' + esc(i.name) + (i.qty > 1 ? " ×" + i.qty : "") +
+            (i.opts && i.opts.length ? ' <span class="om">— ' + esc(i.opts.join(", ")) + '</span>' : '') + '</div>';
+        });
+        if (o.comment) html += '<div class="oitem om">💬 ' + esc(o.comment) + '</div>';
+        html += '<div class="rowbtn" style="margin-top:10px;gap:8px">';
+        baristaActions(o.status).forEach(function (a) {
+          html += '<button class="btn ' + (a.cls || "") + ' sm" style="flex:1" data-adv="' + o.id + '" data-ev="' + a.ev + '">' + a.label + '</button>';
+        });
+        html += '</div></div>';
+      });
+    }
+    html += '<div class="hint">Здесь бариста видит заказы и ведёт их по статусам. В реальном продукте о каждом новом заказе приходит push от Telegram-бота — даже при закрытом приложении.</div>';
+    html += '</div>';
+    scrollEl.innerHTML = html;
+    scrollEl.scrollTop = 0;
+    bottomEl.innerHTML = "";
+  }
+
+  function advance(orderId, ev) {
+    var o = store.orders.find(function (x) { return x.id === orderId; });
+    if (!o) return;
+    o.status = ev;
+    if (ev === "accepted") o.readyAt = Date.now() + 6 * 60000;
+    persist(); broadcast();
+    render();
+  }
+
+  // ---------- Toast / notify ----------
+  function toast(text) {
+    var host = document.getElementById("toasts");
+    var el = document.createElement("div"); el.className = "toast"; el.textContent = text;
+    host.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add("show"); });
+    setTimeout(function () { el.classList.remove("show"); setTimeout(function () { el.remove(); }, 250); }, 2200);
+  }
+  function notifyNewOrder() { toast("🆕 Новый заказ"); if (navigator.vibrate) try { navigator.vibrate(60); } catch (e) {} }
+
+  // ================= EVENTS =================
+  document.querySelector(".roleswitch").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-role]"); if (!b) return;
+    store.role = b.dataset.role;
+    if (store.role === "guest" && store.screen !== "status") store.screen = "menu";
+    render();
+  });
+
+  document.getElementById("scrim").addEventListener("click", closeSheet);
+
+  document.addEventListener("click", function (e) {
+    var el;
+    if ((el = e.target.closest("[data-item]"))) { openSheet(el.dataset.item); return; }
+    if ((el = e.target.closest("[data-tab]"))) { store.screen = el.dataset.tab; render(); return; }
+    if ((el = e.target.closest("[data-go]"))) { store.screen = el.dataset.go; render(); return; }
+    if ((el = e.target.closest("[data-order]"))) { store.activeOrderId = el.dataset.order; store.screen = "status"; render(); return; }
+    if ((el = e.target.closest("[data-place]"))) { placeOrder(); return; }
+    if ((el = e.target.closest("[data-inc]"))) { var l = store.cart.find(function (x) { return x.key === el.dataset.inc; }); if (l) l.qty++; render(); return; }
+    if ((el = e.target.closest("[data-dec]"))) { var k = el.dataset.dec; var li = store.cart.find(function (x) { return x.key === k; }); if (li) { li.qty--; if (li.qty <= 0) store.cart = store.cart.filter(function (x) { return x.key !== k; }); } render(); return; }
+    if ((el = e.target.closest("[data-adv]"))) { advance(el.dataset.adv, el.dataset.ev); return; }
+    // sheet controls
+    if ((el = e.target.closest(".opt[data-mod]"))) { sheetState.sel[el.dataset.mod] = el.dataset.opt; renderSheet(); return; }
+    if ((el = e.target.closest("[data-sq]"))) { sheetState.qty = Math.max(1, sheetState.qty + (el.dataset.sq === "+" ? 1 : -1)); renderSheet(); return; }
+    if ((el = e.target.closest("[data-add]"))) { addToCart(); return; }
+  });
+
+  // ================= INIT =================
+  loadShared();
+  seedOrders();
+  render();
+})();
+</script>
+</body>
+</html>
