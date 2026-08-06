@@ -6,6 +6,16 @@ import { PrismaService } from '../prisma/prisma.service';
 export class MenuService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Список активных точек тенанта для выбора клиентом. */
+  async listLocations(tenantId: string) {
+    const locations = await this.prisma.location.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true, address: true, isAcceptingOrders: true, timezone: true },
+    });
+    return locations;
+  }
+
   /**
    * Возвращает дерево меню (категории → товары → группы модификаторов → опции)
    * с флагами доступности по стоп-листу конкретной точки.
