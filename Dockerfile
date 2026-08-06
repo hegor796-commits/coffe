@@ -10,6 +10,7 @@ COPY apps/tma/package.json apps/tma/
 COPY packages/shared/package.json packages/shared/
 RUN pnpm install --frozen-lockfile
 COPY . .
+RUN pnpm --filter @coffee/shared build
 RUN pnpm --filter @coffee/tma build
 RUN cd apps/api && npx prisma generate && pnpm build
 
