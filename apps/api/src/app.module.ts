@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'node:path';
 import configuration from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -18,6 +20,10 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', '..', 'tma', 'dist'),
+      exclude: ['/v1/*path', '/health', '/socket.io/*path'],
+    }),
     PrismaModule,
     RedisModule,
     QueueModule,

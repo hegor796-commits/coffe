@@ -16,10 +16,15 @@ export class BotService implements OnModuleInit {
   private readonly appUrl: string;
   private readonly botUsername: string | null = null;
 
+  private readonly webhookUrl: string;
+  private readonly webhookSecret: string;
+
   constructor(private readonly config: ConfigService<AppConfig, true>) {
-    const token = config.get('telegram', { infer: true }).botToken;
+    const tg = config.get('telegram', { infer: true });
     this.appUrl = config.get('publicAppUrl', { infer: true });
-    this.bot = new Bot(token);
+    this.bot = new Bot(tg.botToken);
+    this.webhookUrl = tg.webhookUrl;
+    this.webhookSecret = tg.webhookSecret;
   }
 
   async onModuleInit(): Promise<void> {
@@ -32,7 +37,18 @@ export class BotService implements OnModuleInit {
       );
     });
 
-    // В dev без webhook можно поднять long-polling отдельно; в prod — webhook.
+    if (this.webhookUrl) {
+      try {
+        await this.bot.api.setWebhook(this.webhookUrl, {
+          secret_token: this.webhookSecret,
+          drop_pending_updates: true,
+        });
+        this.logger.log(`Webhook зарегистрирован: ${this.webhookUrl}`);
+      } catch (e) {
+        this.logger.error(`Не удалось установить webhook: ${(e as Error).message}`);
+      }
+    }
+
     this.logger.log('Бот инициализирован');
   }
 
