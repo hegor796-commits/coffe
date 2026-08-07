@@ -37,6 +37,14 @@ export class BotService implements OnModuleInit {
       );
     });
 
+    // В webhook-режиме бот должен знать свои данные (botInfo) до обработки
+    // апдейтов — иначе handleUpdate падает с "Bot not initialized".
+    try {
+      await this.bot.init();
+    } catch (e) {
+      this.logger.error(`Не удалось инициализировать бота (getMe): ${(e as Error).message}`);
+    }
+
     if (this.webhookUrl) {
       try {
         await this.bot.api.setWebhook(this.webhookUrl, {
