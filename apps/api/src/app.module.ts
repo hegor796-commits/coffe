@@ -14,6 +14,7 @@ import { AuthModule } from './auth/auth.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
 import { StaffModule } from './staff/staff.module';
+import { SeedModule } from './seed/seed.module';
 import { HealthController } from './health.controller';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -34,6 +35,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
     MenuModule,
     OrdersModule,
     StaffModule,
+    SeedModule,
   ],
   controllers: [HealthController],
   providers: [

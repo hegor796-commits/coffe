@@ -7,11 +7,23 @@ import { OrderStatusScreen } from './OrderStatusScreen';
 import { HistoryScreen } from './HistoryScreen';
 
 export function ClientApp() {
-  const { data: locations, isLoading } = useLocations();
+  const { data: locations, isLoading, error, refetch } = useLocations();
   const [locationId, setLocationId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   if (isLoading) return <div className="center">Загрузка точек…</div>;
+  // Ошибку запроса не выдаём за «нет точек» — показываем причину и даём повтор.
+  if (error) {
+    return (
+      <div className="center">
+        <div>Не удалось загрузить точки.</div>
+        <div className="hint">{(error as Error).message}</div>
+        <button className="card" style={{ marginTop: 12 }} onClick={() => refetch()}>
+          Повторить
+        </button>
+      </div>
+    );
+  }
   if (!locations || locations.length === 0) {
     return <div className="center">У этой кофейни пока нет активных точек.</div>;
   }
