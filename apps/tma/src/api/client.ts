@@ -1,6 +1,18 @@
 import { useAuth } from '../store/auth';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+/**
+ * Адрес API. На проде Mini App отдаётся тем же сервером, что и API, поэтому
+ * используем относительный путь (тот же origin) — не зависим от build-time
+ * переменной. Локально (localhost) обращаемся к dev-серверу API на :3000.
+ */
+function resolveApiUrl(): string {
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+    return '';
+  }
+  return (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
+}
+
+const API_URL = resolveApiUrl();
 
 export class ApiError extends Error {
   constructor(
