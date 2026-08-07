@@ -43,6 +43,19 @@ export async function api<T>(
   });
 
   if (!res.ok) {
+    // Протухший/невалидный access-токен (истёк по TTL или подписан прежним
+    // секретом инстанса): сбрасываем сохранённую авторизацию и перезагружаемся,
+    // чтобы приложение заново залогинилось через свежий Telegram initData.
+    // Guard по времени — защита от возможной петли перезагрузок.
+    if (res.status === 401 && auth) {
+      const now = Date.now();
+      const last = Number(sessionStorage.getItem('coffee_reauth_at') ?? '0');
+      if (now - last > 10000) {
+        sessionStorage.setItem('coffee_reauth_at', String(now));
+        useAuth.getState().clear();
+        window.location.reload();
+      }
+    }
     let parsed: unknown;
     try {
       parsed = await res.json();
