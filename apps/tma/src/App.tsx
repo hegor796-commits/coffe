@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Role } from '@coffee/shared';
 import { api } from './api/client';
@@ -26,18 +26,26 @@ interface LoginResponse {
 export function App() {
   const { accessToken, role, tenant, setAuth } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(!accessToken);
+  const [loading, setLoading] = useState(true);
+  const booted = useRef(false);
 
   useEffect(() => {
-    if (accessToken) {
-      applyTheme(tenant?.branding?.primaryColor);
-      return;
-    }
+    // Логинимся один раз на маунт. В Telegram — ВСЕГДА заново (свежий initData),
+    // не полагаясь на сохранённый токен: он мог протухнуть (TTL) или быть
+    // подписан прежним секретом инстанса. Это убирает залипание на 401.
+    if (booted.current) return;
+    booted.current = true;
+
     const initData = getInitData();
-    // В dev-браузере initData пустой — показываем подсказку.
     const tenantSlug = getStartParam() ?? new URLSearchParams(location.search).get('tenant') ?? undefined;
 
     if (!initData) {
+      // Dev-браузер без Telegram: используем сохранённый токен, если он есть.
+      if (accessToken) {
+        applyTheme(tenant?.branding?.primaryColor);
+        setLoading(false);
+        return;
+      }
       setLoading(false);
       setError('Откройте приложение через Telegram (initData отсутствует).');
       return;
@@ -54,7 +62,9 @@ export function App() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [accessToken, setAuth, tenant?.branding?.primaryColor]);
+    // Намеренно один раз на маунт — зависимости не отслеживаем.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (loading) return <div className="center">Загрузка…</div>;
   if (error) return <div className="center">{error}</div>;
