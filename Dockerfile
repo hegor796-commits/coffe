@@ -19,5 +19,5 @@ FROM base AS production
 ENV NODE_ENV=production
 COPY --from=build /app ./
 EXPOSE 3000
-# На старте синхронизируем схему БД (не фатально), затем запускаем сервер
-CMD ["sh", "-c", "cd apps/api && (npx prisma db push --accept-data-loss --skip-generate || echo '[startup] db push failed, continuing') && node dist/main.js"]
+# На старте: синхронизируем схему БД, засеваем демо-данные (идемпотентно), запускаем сервер
+CMD ["sh", "-c", "cd apps/api && (npx prisma db push --accept-data-loss --skip-generate || echo '[startup] db push failed'); (npx tsx prisma/seed.ts || echo '[startup] seed skipped'); node dist/main.js"]

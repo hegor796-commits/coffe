@@ -60,6 +60,17 @@ async function main() {
     },
   });
 
+  // Меню создаём только один раз (идемпотентность): если категории уже есть,
+  // считаем, что кофейня засеяна, и выходим.
+  const existingCategory = await prisma.category.findFirst({
+    where: { tenantId: tenant.id },
+  });
+  if (existingCategory) {
+    console.log('Сид: меню уже существует, пропускаю создание позиций.');
+    console.log(`  tenant slug: ${tenant.slug}, owner tg: ${ownerTg}, barista tg: ${baristaTg}`);
+    return;
+  }
+
   // Меню: категория «Кофе», группы модификаторов «Размер» и «Молоко».
   const coffee = await prisma.category.create({
     data: { tenantId: tenant.id, name: 'Кофе', sort: 0 },

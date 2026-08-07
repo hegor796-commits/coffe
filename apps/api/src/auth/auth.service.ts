@@ -124,8 +124,14 @@ export class AuthService {
   }
 
   private async resolveTenant(startParam?: string) {
-    if (!startParam) return null;
-    return this.prisma.tenant.findUnique({ where: { slug: startParam } });
+    // Явно указанная кофейня (deep-link ?startapp=<slug>).
+    if (startParam) {
+      return this.prisma.tenant.findUnique({ where: { slug: startParam } });
+    }
+    // Нет start_param (напр. вход через кнопку меню бота) — берём кофейню
+    // по умолчанию. Для одиночной инсталляции это демо-кофейня.
+    const defaultSlug = process.env.DEFAULT_TENANT_SLUG ?? 'demo';
+    return this.prisma.tenant.findUnique({ where: { slug: defaultSlug } });
   }
 
   private issueTokens(
