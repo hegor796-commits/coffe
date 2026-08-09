@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { NavLink, Route, Routes, useNavigate } from 'react-router-dom';
+import { NavLink, Route, Routes } from 'react-router-dom';
 import { useLocations } from '../../api/hooks';
 import { MenuScreen } from './MenuScreen';
 import { CartScreen } from './CartScreen';
@@ -8,10 +7,8 @@ import { HistoryScreen } from './HistoryScreen';
 
 export function ClientApp() {
   const { data: locations, isLoading, error, refetch } = useLocations();
-  const [locationId, setLocationId] = useState<string | null>(null);
-  const navigate = useNavigate();
 
-  if (isLoading) return <div className="center">Загрузка точек…</div>;
+  if (isLoading) return <div className="center">Загрузка…</div>;
   // Ошибку запроса не выдаём за «нет точек» — показываем причину и даём повтор.
   if (error) {
     return (
@@ -37,44 +34,11 @@ export function ClientApp() {
     );
   }
 
-  // Автовыбор единственной точки; иначе — выбор.
-  const current = locationId ?? (locations.length === 1 ? locations[0].id : null);
-
-  if (!current) {
-    return (
-      <div className="app">
-        <div className="kicker">Кофейня</div>
-        <div className="h1">Выберите точку</div>
-        {locations.map((l) => (
-          <button key={l.id} className="loc" onClick={() => setLocationId(l.id)}>
-            <span className="radio-dot" />
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span className="serif" style={{ fontSize: 16, display: 'block' }}>
-                {l.name}
-              </span>
-              <span className="hint">{l.address}</span>
-            </span>
-            {!l.isAcceptingOrders && <span className="tag tag-neutral">закрыто</span>}
-          </button>
-        ))}
-      </div>
-    );
-  }
+  // Одна точка на кофейню — выбор не показываем, берём первую.
+  const current = locations[0].id;
 
   return (
     <>
-      {locations.length > 1 && (
-        <button
-          className="btn btn-ghost"
-          style={{ position: 'fixed', top: 6, right: 6, zIndex: 30, fontSize: 12 }}
-          onClick={() => {
-            setLocationId(null);
-            navigate('/menu');
-          }}
-        >
-          Сменить точку
-        </button>
-      )}
       <Routes>
         <Route path="menu" element={<MenuScreen locationId={current} />} />
         <Route path="cart" element={<CartScreen locationId={current} />} />

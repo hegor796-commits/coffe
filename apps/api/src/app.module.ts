@@ -24,6 +24,18 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', '..', 'tma', 'dist'),
       exclude: ['/v1/*path', '/health', '/socket.io/*path'],
+      serveStaticOptions: {
+        // index.html не кэшируем: он ссылается на хэшированные бандлы, и без
+        // этого Telegram/браузер отдаёт старый index → старый фронт даже после
+        // деплоя. Хэшированные ассеты (js/css) можно кэшировать долго.
+        setHeaders: (res: { setHeader: (k: string, v: string) => void }, filePath: string) => {
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          } else if (/\.(?:js|css|woff2?|png|svg|jpg|jpeg)$/.test(filePath)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          }
+        },
+      },
     }),
     PrismaModule,
     RedisModule,
