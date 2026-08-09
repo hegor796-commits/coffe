@@ -16,16 +16,25 @@ export function ClientApp() {
   if (error) {
     return (
       <div className="center">
-        <div>Не удалось загрузить точки.</div>
+        <div className="serif" style={{ fontSize: 22 }}>
+          Не удалось загрузить точки
+        </div>
         <div className="hint">{(error as Error).message}</div>
-        <button className="card" style={{ marginTop: 12 }} onClick={() => refetch()}>
+        <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => refetch()}>
           Повторить
         </button>
       </div>
     );
   }
   if (!locations || locations.length === 0) {
-    return <div className="center">У этой кофейни пока нет активных точек.</div>;
+    return (
+      <div className="center">
+        <div style={{ fontSize: 44, color: 'var(--color-neutral-400)' }}>☕</div>
+        <div className="serif" style={{ fontSize: 22 }}>
+          Пока нет активных точек
+        </div>
+      </div>
+    );
   }
 
   // Автовыбор единственной точки; иначе — выбор.
@@ -34,19 +43,18 @@ export function ClientApp() {
   if (!current) {
     return (
       <div className="app">
+        <div className="kicker">Кофейня</div>
         <div className="h1">Выберите точку</div>
         {locations.map((l) => (
-          <button
-            key={l.id}
-            className="card row between"
-            style={{ width: '100%', textAlign: 'left' }}
-            onClick={() => setLocationId(l.id)}
-          >
-            <span>
-              <b>{l.name}</b>
-              <div className="hint">{l.address}</div>
+          <button key={l.id} className="loc" onClick={() => setLocationId(l.id)}>
+            <span className="radio-dot" />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span className="serif" style={{ fontSize: 16, display: 'block' }}>
+                {l.name}
+              </span>
+              <span className="hint">{l.address}</span>
             </span>
-            {!l.isAcceptingOrders && <span className="chip">закрыто</span>}
+            {!l.isAcceptingOrders && <span className="tag tag-neutral">закрыто</span>}
           </button>
         ))}
       </div>
@@ -55,6 +63,18 @@ export function ClientApp() {
 
   return (
     <>
+      {locations.length > 1 && (
+        <button
+          className="btn btn-ghost"
+          style={{ position: 'fixed', top: 6, right: 6, zIndex: 30, fontSize: 12 }}
+          onClick={() => {
+            setLocationId(null);
+            navigate('/menu');
+          }}
+        >
+          Сменить точку
+        </button>
+      )}
       <Routes>
         <Route path="menu" element={<MenuScreen locationId={current} />} />
         <Route path="cart" element={<CartScreen locationId={current} />} />
@@ -73,18 +93,6 @@ export function ClientApp() {
           Заказы
         </NavLink>
       </nav>
-      {locations.length > 1 && (
-        <button
-          className="btn secondary sm"
-          style={{ position: 'fixed', top: 8, right: 8 }}
-          onClick={() => {
-            setLocationId(null);
-            navigate('/menu');
-          }}
-        >
-          Сменить точку
-        </button>
-      )}
     </>
   );
 }

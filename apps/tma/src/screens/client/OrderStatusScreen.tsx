@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatMoney, OrderStatus, WsEvent } from '@coffee/shared';
 import { useOrder } from '../../api/hooks';
@@ -23,6 +23,7 @@ export function OrderStatusScreen() {
   const { id } = useParams<{ id: string }>();
   const { data: order } = useOrder(id);
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!id) return;
@@ -39,7 +40,9 @@ export function OrderStatusScreen() {
 
   const cancelledText = CANCELLED_TEXT[order.status];
   const currentIndex = STEPS.findIndex((s) => s.status === order.status);
-  const progress = cancelledText ? 0 : ((currentIndex + 1) / STEPS.length) * 100;
+  const isReady = order.status === OrderStatus.Ready;
+  const isDone = order.status === OrderStatus.Completed;
+  const currentLabel = STEPS[currentIndex]?.label ?? '—';
 
   const readyAt = order.readyAtPromised
     ? new Date(order.readyAtPromised).toLocaleTimeString('ru-RU', {
@@ -50,54 +53,118 @@ export function OrderStatusScreen() {
 
   return (
     <div className="app">
-      <div className="h1">Заказ {order.number}</div>
+      {!cancelledText && (
+        <div className="check-circle" style={isReady ? { animation: 'fade .4s ease' } : undefined}>
+          {isReady || isDone ? '✓' : '☕'}
+        </div>
+      )}
+
+      <h2 style={{ fontSize: 28, fontWeight: 400, textAlign: 'center', margin: '20px 0 4px' }}>
+        {cancelledText ? 'Заказ отменён' : isReady ? 'Заказ готов' : 'Заказ принят'}
+      </h2>
+      <p
+        style={{
+          fontSize: 13.5,
+          color: 'rgba(32,31,29,.65)',
+          fontStyle: 'italic',
+          textAlign: 'center',
+          margin: 0,
+        }}
+      >
+        {cancelledText ?? (isReady ? 'Без очереди — заходите и забирайте.' : 'Мы уведомим, когда будет готово.')}
+      </p>
 
       {cancelledText ? (
-        <div className="card" style={{ background: 'rgba(229,72,77,0.12)' }}>{cancelledText}</div>
+        <div className="notice notice-danger" style={{ marginTop: 22 }}>
+          {cancelledText}
+        </div>
       ) : (
         <>
-          <div className="stepper">
-            <div style={{ width: `${progress}%` }} />
-          </div>
-          <div className="row between">
+          <div className="steps" style={{ justifyContent: 'center' }}>
             {STEPS.map((s, i) => (
-              <span key={s.status} className={i <= currentIndex ? '' : 'muted'} style={{ fontSize: 12 }}>
-                {s.label}
-              </span>
+              <span key={s.status} className={`ob-dot ${i <= currentIndex ? 'on' : ''}`} />
             ))}
           </div>
-          {readyAt && order.status !== OrderStatus.Completed && (
-            <div className="card" style={{ marginTop: 14, textAlign: 'center' }}>
-              Готовность к <b>{readyAt}</b>
+
+          <div
+            style={{
+              border: '1px solid var(--color-divider)',
+              borderRadius: 'var(--radius-md)',
+              padding: 18,
+              marginTop: 18,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'baseline',
+                paddingBottom: 12,
+                borderBottom: '1px solid var(--color-divider)',
+              }}
+            >
+              <div>
+                <div className="kicker">Заказ</div>
+                <div className="tnum serif" style={{ fontSize: 20 }}>
+                  {order.number}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div className="kicker">{isReady || isDone ? 'Статус' : 'Готовность'}</div>
+                <div className="tnum serif" style={{ fontSize: 20 }}>
+                  {isReady || isDone ? currentLabel : readyAt ? `к ${readyAt}` : currentLabel}
+                </div>
+              </div>
             </div>
-          )}
-          {order.status === OrderStatus.Ready && (
-            <div className="card" style={{ background: 'rgba(48,163,108,0.15)', textAlign: 'center' }}>
-              ☕️ Готово! Можно забирать.
+            <div style={{ paddingTop: 12, fontSize: 13, color: 'rgba(32,31,29,.72)', lineHeight: 1.6 }}>
+              Покажите этот экран на кассе при получении.
+            </div>
+          </div>
+
+          {isReady && (
+            <div className="notice notice-success" style={{ marginTop: 12, textAlign: 'center' }}>
+              ☕ Готово! Можно забирать.
             </div>
           )}
         </>
       )}
 
-      <div className="h2">Состав</div>
-      {order.items.map((it, i) => (
-        <div key={i} className="card">
-          <div className="row between">
-            <b>
-              {it.name}
-              {it.quantity > 1 ? ` ×${it.quantity}` : ''}
-            </b>
-            <span>{formatMoney(it.lineTotal)}</span>
+      <h2 className="h2">Состав</h2>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {order.items.map((it, i) => (
+          <div
+            key={i}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 12,
+              padding: '12px 0',
+              borderBottom: '1px solid var(--color-divider)',
+            }}
+          >
+            <div>
+              <div className="serif" style={{ fontSize: 15 }}>
+                {it.name}
+                {it.quantity > 1 ? ` ×${it.quantity}` : ''}
+              </div>
+              {it.options.length > 0 && (
+                <div style={{ fontSize: 11.5, color: 'rgba(32,31,29,.6)' }}>
+                  {it.options.map((o) => o.optionName).join(' · ')}
+                </div>
+              )}
+            </div>
+            <span className="tnum">{formatMoney(it.lineTotal)}</span>
           </div>
-          {it.options.length > 0 && (
-            <div className="hint">{it.options.map((o) => o.optionName).join(', ')}</div>
-          )}
-        </div>
-      ))}
-      <div className="row between" style={{ marginTop: 8, fontWeight: 700 }}>
-        <span>Итого</span>
-        <span>{formatMoney(order.total)}</span>
+        ))}
       </div>
+      <div className="row between serif" style={{ marginTop: 14, fontSize: 18 }}>
+        <span>Итого</span>
+        <span className="tnum">{formatMoney(order.total)}</span>
+      </div>
+
+      <button className="btn btn-primary btn-block" style={{ marginTop: 22 }} onClick={() => navigate('/menu')}>
+        Вернуться в меню
+      </button>
     </div>
   );
 }

@@ -3,10 +3,13 @@ import { formatMoney } from '@coffee/shared';
 import type { MenuModifierGroup, MenuProduct } from '../../api/types';
 import { useCart } from '../../store/cart';
 import { haptic } from '../../telegram';
+import { productGlyph } from './glyph';
 
-/** Модальное окно выбора модификаторов и добавления в корзину. */
+/** Модальный лист выбора модификаторов и добавления в корзину. */
 export function ProductSheet({ product, onClose }: { product: MenuProduct; onClose: () => void }) {
   const add = useCart((s) => s.add);
+  const [qty, setQty] = useState(1);
+
   // Предвыбор дефолтных опций.
   const [selected, setSelected] = useState<Record<string, Set<string>>>(() => {
     const init: Record<string, Set<string>> = {};
@@ -21,6 +24,7 @@ export function ProductSheet({ product, onClose }: { product: MenuProduct; onClo
     setSelected((prev) => {
       const cur = new Set(prev[group.id]);
       if (cur.has(optionId)) {
+        if (group.maxSelect === 1 && group.isRequired) return prev; // нельзя снять единственный обязательный
         cur.delete(optionId);
       } else {
         if (group.maxSelect === 1) cur.clear();
@@ -33,12 +37,7 @@ export function ProductSheet({ product, onClose }: { product: MenuProduct; onClo
 
   const { unitPrice, valid, options } = useMemo(() => {
     let price = product.basePrice;
-    const opts: {
-      groupId: string;
-      optionId: string;
-      optionName: string;
-      priceDelta: number;
-    }[] = [];
+    const opts: { groupId: string; optionId: string; optionName: string; priceDelta: number }[] = [];
     let ok = true;
     for (const g of product.modifierGroups) {
       const chosen = selected[g.id] ?? new Set();
@@ -56,60 +55,109 @@ export function ProductSheet({ product, onClose }: { product: MenuProduct; onClo
   }, [product, selected]);
 
   const addToCart = () => {
-    add({ product, quantity: 1, options, unitPrice });
+    add({ product, quantity: qty, options, unitPrice });
     haptic('success');
     onClose();
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.4)',
-        display: 'flex',
-        alignItems: 'flex-end',
-        zIndex: 50,
-      }}
-      onClick={onClose}
-    >
-      <div
-        className="app"
-        style={{ background: 'var(--bg)', borderRadius: '18px 18px 0 0', width: '100%', maxHeight: '85vh', overflowY: 'auto', paddingBottom: 100 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="h1">{product.name}</div>
-        {product.description && <div className="hint">{product.description}</div>}
-
-        {product.modifierGroups.map((g) => (
-          <div key={g.id}>
-            <div className="h2">
-              {g.name}
-              {g.isRequired && <span className="hint"> · обязательно</span>}
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="app" style={{ paddingTop: 16, paddingBottom: 108 }}>
+          <div className="plate" style={{ borderRadius: 'var(--radius-md)' }}>
+            <div className="plc" style={{ height: 180, fontSize: 60 }}>
+              {productGlyph(product.name)}
             </div>
-            {g.options.map((o) => {
-              const checked = selected[g.id]?.has(o.id);
-              return (
-                <div
-                  key={o.id}
-                  className="opt"
-                  style={{ opacity: o.available ? 1 : 0.4 }}
-                  onClick={() => o.available && toggle(g, o.id)}
-                >
-                  <span>
-                    {g.maxSelect === 1 ? (checked ? '◉' : '○') : checked ? '☑' : '☐'} {o.name}
-                  </span>
-                  <span className="hint">{o.priceDelta ? `+${formatMoney(o.priceDelta)}` : ''}</span>
-                </div>
-              );
-            })}
           </div>
-        ))}
 
-        <div className="sticky-bottom">
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              justifyContent: 'space-between',
+              gap: 10,
+              marginTop: 16,
+            }}
+          >
+            <h2 style={{ fontSize: 26, fontWeight: 400, margin: 0 }}>{product.name}</h2>
+            <span className="tnum serif" style={{ fontSize: 20 }}>
+              {formatMoney(product.basePrice)}
+            </span>
+          </div>
+          {product.description && (
+            <p
+              style={{
+                fontSize: 13.5,
+                lineHeight: 1.6,
+                color: 'rgba(32,31,29,.72)',
+                margin: '8px 0 0',
+                fontStyle: 'italic',
+              }}
+            >
+              {product.description}
+            </p>
+          )}
+
+          {product.modifierGroups.map((g) => {
+            const single = g.maxSelect === 1;
+            return (
+              <div key={g.id}>
+                <hr className="hr" style={{ margin: '20px 0' }} />
+                <div className="serif" style={{ fontSize: 15, marginBottom: 10 }}>
+                  {g.name}
+                  {g.isRequired && <span className="hint"> · обязательно</span>}
+                </div>
+                <div className="chips-wrap">
+                  {g.options.map((o) => {
+                    const checked = selected[g.id]?.has(o.id);
+                    return (
+                      <span
+                        key={o.id}
+                        className={`chip ${checked ? 'on' : ''}`}
+                        style={{ opacity: o.available ? 1 : 0.4, pointerEvents: o.available ? 'auto' : 'none' }}
+                        onClick={() => o.available && toggle(g, o.id)}
+                      >
+                        {!single && <span style={{ marginRight: 6 }}>{checked ? '☑' : '☐'}</span>}
+                        {o.name}
+                        {o.priceDelta ? (
+                          <span className="tnum" style={{ marginLeft: 6, opacity: 0.75 }}>
+                            +{formatMoney(o.priceDelta)}
+                          </span>
+                        ) : null}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          <hr className="hr" style={{ margin: '20px 0' }} />
+          <div
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <div className="serif" style={{ fontSize: 15 }}>
+              Количество
+            </div>
+            <div className="stp">
+              <button className="stpb" onClick={() => setQty((q) => Math.max(1, q - 1))}>
+                −
+              </button>
+              <span className="q" style={{ fontSize: 16 }}>
+                {qty}
+              </span>
+              <button className="stpb" onClick={() => setQty((q) => q + 1)}>
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky-bottom" style={{ position: 'sticky' }}>
           <div className="sticky-inner">
-            <button className="btn block" disabled={!valid} onClick={addToCart}>
-              Добавить · {formatMoney(unitPrice)}
+            <button className="mainbtn" disabled={!valid} onClick={addToCart}>
+              <span>Добавить</span>
+              <span className="tnum">{formatMoney(unitPrice * qty)}</span>
             </button>
           </div>
         </div>

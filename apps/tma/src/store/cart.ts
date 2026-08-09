@@ -18,7 +18,7 @@ interface CartState {
   count: () => number;
 }
 
-function lineKey(productId: string, optionIds: string[]): string {
+export function lineKey(productId: string, optionIds: string[]): string {
   return `${productId}:${[...optionIds].sort().join(',')}`;
 }
 
