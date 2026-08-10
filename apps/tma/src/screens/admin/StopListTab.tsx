@@ -11,37 +11,51 @@ export function StopListTab() {
   return (
     <>
       <div className="h2">Стоп-лист</div>
-      <select
-        className="card"
-        value={current ?? ''}
-        onChange={(e) => setLocationId(e.target.value)}
-        style={{ width: '100%' }}
-      >
-        {locations?.map((l) => (
-          <option key={l.id} value={l.id}>
-            {l.name}
-          </option>
-        ))}
-      </select>
+      {(locations?.length ?? 0) > 1 && (
+        <select
+          className="select"
+          value={current ?? ''}
+          onChange={(e) => setLocationId(e.target.value)}
+          style={{ width: '100%', marginBottom: 10 }}
+        >
+          {locations?.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+      )}
 
-      <div className="hint" style={{ marginBottom: 8 }}>
+      <div className="hint" style={{ marginBottom: 12 }}>
         Выключите то, что закончилось — оно скроется из меню гостей.
       </div>
 
-      {menu?.categories.map((cat) =>
-        cat.products.map((p) => (
-          <div key={p.id} className="card row between">
-            <span style={{ opacity: p.available ? 1 : 0.5 }}>{p.name}</span>
-            <button
-              className={`btn sm ${p.available ? 'secondary' : 'danger'}`}
-              disabled={toggle.isPending}
-              onClick={() => toggle.mutate({ productId: p.id, stopped: p.available })}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {menu?.categories.map((cat) =>
+          cat.products.map((p) => (
+            <div
+              key={p.id}
+              className="card"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
             >
-              {p.available ? 'В наличии' : 'Стоп'}
-            </button>
-          </div>
-        )),
-      )}
+              <span className="serif" style={{ fontSize: 15, opacity: p.available ? 1 : 0.5 }}>
+                {p.name}
+              </span>
+              <button
+                className={`btn sm ${p.available ? 'secondary' : 'danger'}`}
+                disabled={toggle.isPending}
+                onClick={() => toggle.mutate({ productId: p.id, stopped: p.available })}
+              >
+                {p.available ? 'В наличии' : 'Стоп'}
+              </button>
+            </div>
+          )),
+        )}
+      </div>
     </>
   );
 }

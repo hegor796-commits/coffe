@@ -6,7 +6,9 @@ export function LocationsTab() {
   return (
     <>
       <div className="h2">Точки</div>
-      {locations?.map((l) => <LocationRow key={l.id} location={l} />)}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {locations?.map((l) => <LocationRow key={l.id} location={l} />)}
+      </div>
       {(!locations || locations.length === 0) && <div className="hint">Точек пока нет.</div>}
     </>
   );
@@ -19,10 +21,15 @@ function LocationRow({
 }) {
   const pause = usePauseLocation(location.id);
   return (
-    <div className="card row between">
+    <div
+      className="card"
+      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+    >
       <span>
-        <b>{location.name}</b>
-        <div className="hint">{location.address}</div>
+        <span className="serif" style={{ fontSize: 16, display: 'block' }}>
+          {location.name}
+        </span>
+        <span className="hint">{location.address}</span>
       </span>
       <button
         className={`btn sm ${location.isAcceptingOrders ? 'secondary' : 'danger'}`}

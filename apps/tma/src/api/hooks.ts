@@ -50,6 +50,17 @@ export function useCreateOrder() {
   });
 }
 
+export function useCancelOrder(orderId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<OrderResponse>(`/v1/orders/${orderId}/cancel`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['order', orderId] });
+      qc.invalidateQueries({ queryKey: ['orders', 'my'] });
+    },
+  });
+}
+
 export function useStaffOrders(locationId: string | undefined) {
   return useQuery({
     queryKey: ['staff', 'orders', locationId],

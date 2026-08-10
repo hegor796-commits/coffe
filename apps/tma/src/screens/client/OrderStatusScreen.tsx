@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { formatMoney, OrderStatus, WsEvent } from '@coffee/shared';
-import { useOrder } from '../../api/hooks';
+import { canTransition, formatMoney, OrderEvent, OrderStatus, WsEvent } from '@coffee/shared';
+import { useCancelOrder, useOrder } from '../../api/hooks';
 import { getSocket, subscribeOrder } from '../../ws';
+import { haptic } from '../../telegram';
 
 const STEPS: { status: OrderStatus; label: string }[] = [
   { status: OrderStatus.Created, label: 'Оформлен' },
@@ -22,6 +23,7 @@ const CANCELLED_TEXT: Partial<Record<OrderStatus, string>> = {
 export function OrderStatusScreen() {
   const { id } = useParams<{ id: string }>();
   const { data: order } = useOrder(id);
+  const cancel = useCancelOrder(id);
   const qc = useQueryClient();
   const navigate = useNavigate();
 
@@ -165,6 +167,19 @@ export function OrderStatusScreen() {
       <button className="btn btn-primary btn-block" style={{ marginTop: 22 }} onClick={() => navigate('/menu')}>
         Вернуться в меню
       </button>
+
+      {canTransition(order.status, OrderEvent.CancelByClient) && (
+        <button
+          className="btn btn-secondary btn-block"
+          style={{ marginTop: 10 }}
+          disabled={cancel.isPending}
+          onClick={() => {
+            cancel.mutate(undefined, { onSuccess: () => haptic('warning') });
+          }}
+        >
+          {cancel.isPending ? 'Отменяем…' : 'Отменить заказ'}
+        </button>
+      )}
     </div>
   );
 }
