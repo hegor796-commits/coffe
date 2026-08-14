@@ -14,7 +14,10 @@ async function bootstrap(): Promise<void> {
 
   const port = config.get('port', { infer: true });
   await app.listen(port, '0.0.0.0');
-  new Logger('Bootstrap').log(`API запущен на :${port}`);
+  const log = new Logger('Bootstrap');
+  log.log(`API запущен на :${port}`);
+  // Одна сборка отдаёт и API, и мини-приложение (ServeStaticModule).
+  log.log('Мини-приложение раздаётся из этой же сборки (статикой).');
 }
 
 void bootstrap();
