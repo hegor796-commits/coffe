@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Role } from '@coffee/shared';
@@ -17,6 +17,8 @@ export interface LoginResult {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger('Auth');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -55,6 +57,13 @@ export class AuthService {
     const staff = await this.prisma.staffUser.findUnique({
       where: { tenantId_tgUserId: { tenantId: tenant.id, tgUserId } },
     });
+
+    // Диагностика: видно, какой tgUserId прислал Telegram, в каком тенанте
+    // искали персонал и что нашли. Помогает понять, почему роль = client.
+    this.logger.log(
+      `вход: tgUserId=${tgUserId}, tenant=${tenant.slug}, ` +
+        `staff=${staff ? `${staff.role}${staff.isActive ? '' : ' (неактивен)'}` : 'не найден → client'}`,
+    );
 
     if (staff && staff.isActive) {
       return this.issueTokens(
