@@ -16,7 +16,10 @@ export const orderItemInputSchema = z.object({
 
 /** Тело запроса создания заказа. Цены НЕ принимаем от клиента — считаем на сервере. */
 export const createOrderSchema = z.object({
-  locationId: z.string().uuid(),
+  // id точки — опаковый идентификатор приложения (uuid у новых точек, но у
+  // демо-точки из раннего сида он вида `<tenant>-main`). Не привязываемся к
+  // формату uuid; существование точки проверяется в сервисе с учётом тенанта.
+  locationId: z.string().min(1),
   items: z.array(orderItemInputSchema).min(1).max(30),
   channel: z.nativeEnum(Channel).default(Channel.Tma),
   /** ISO-время желаемой готовности; null = как можно скорее. */
@@ -82,7 +85,7 @@ export const upsertModifierGroupSchema = z.object({
 
 export const inviteStaffSchema = z.object({
   role: z.enum(['barista', 'manager']),
-  locationId: z.string().uuid(),
+  locationId: z.string().min(1),
   name: z.string().max(120).optional(),
 });
 

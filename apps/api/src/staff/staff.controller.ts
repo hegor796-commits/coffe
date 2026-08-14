@@ -10,7 +10,7 @@ import { StaffService } from './staff.service';
 
 const toggleSchema = z
   .object({
-    locationId: z.string().uuid(),
+    locationId: z.string().min(1),
     productId: z.string().uuid().optional(),
     optionId: z.string().uuid().optional(),
     stopped: z.boolean(),
@@ -19,7 +19,7 @@ const toggleSchema = z
   .refine((v) => v.productId || v.optionId, { message: 'Укажите productId или optionId' });
 
 const pauseSchema = z.object({
-  locationId: z.string().uuid(),
+  locationId: z.string().min(1),
   accepting: z.boolean(),
 });
 
