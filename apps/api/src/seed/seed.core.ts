@@ -68,9 +68,10 @@ export async function seedDemo(prisma: Db, opts: SeedOptions = {}): Promise<void
   }
 
   // 3. Персонал (owner/barista) — по Telegram id из env.
+  log(`персонал: owner tgId=${ownerTg}, barista tgId=${baristaTg}`);
   await prisma.staffUser.upsert({
     where: { tenantId_tgUserId: { tenantId: tenant.id, tgUserId: ownerTg } },
-    update: {},
+    update: { role: 'owner', isActive: true },
     create: {
       tenantId: tenant.id,
       locationId: location.id,
@@ -81,7 +82,7 @@ export async function seedDemo(prisma: Db, opts: SeedOptions = {}): Promise<void
   });
   await prisma.staffUser.upsert({
     where: { tenantId_tgUserId: { tenantId: tenant.id, tgUserId: baristaTg } },
-    update: {},
+    update: { role: 'barista', isActive: true },
     create: {
       tenantId: tenant.id,
       locationId: location.id,
@@ -90,6 +91,7 @@ export async function seedDemo(prisma: Db, opts: SeedOptions = {}): Promise<void
       name: 'Бариста',
     },
   });
+  log(`персонал зарегистрирован`);
 
   // 4. Меню создаём один раз: если категории уже есть — пропускаем.
   const existingCategory = await prisma.category.findFirst({ where: { tenantId: tenant.id } });
