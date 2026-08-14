@@ -31,9 +31,14 @@ export class AuthService {
    */
   async loginWithInitData(initData: string, tenantSlugHint?: string): Promise<LoginResult> {
     const botToken = this.config.get('telegram', { infer: true }).botToken;
+    // Telegram может отдавать WebView закэшированный initData с момента первого
+    // открытия. Часовой лимит из спеки слишком строг для реального использования
+    // (пользователь открыл бота, отвлёкся, вернулся) — по умолчанию сутки,
+    // настраивается через TELEGRAM_INITDATA_TTL (в секундах).
+    const initDataTtl = Number(process.env.TELEGRAM_INITDATA_TTL ?? 86400);
     let parsed;
     try {
-      parsed = validateInitData(initData, botToken);
+      parsed = validateInitData(initData, botToken, initDataTtl);
     } catch (e) {
       throw new UnauthorizedException((e as Error).message);
     }
