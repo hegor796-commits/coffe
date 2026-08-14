@@ -74,15 +74,17 @@ export function App() {
     <Routes>
       <Route path="/staff/*" element={<StaffApp />} />
       <Route path="/admin/*" element={<AdminApp />} />
-      <Route path="/*" element={<ClientApp />} />
-      {/* Роль по умолчанию решает стартовый экран. */}
-      <Route path="/" element={<DefaultRedirect role={role} />} />
+      {/* Catch-all сам решает по роли, а не отдельный маршрут «/». Telegram может
+          открыть WebView с любым путём (напр. /index.html), поэтому нельзя
+          полагаться на точное совпадение «/» — иначе персонал попадал в меню. */}
+      <Route path="/*" element={<RoleHome role={role} />} />
     </Routes>
   );
 }
 
-function DefaultRedirect({ role }: { role: Role }) {
+/** Стартовый экран по роли. Персонал уводим на свои разделы, клиент — в меню. */
+function RoleHome({ role }: { role: Role }) {
   if (role === Role.Barista) return <Navigate to="/staff" replace />;
   if (role === Role.Owner || role === Role.Manager) return <Navigate to="/admin" replace />;
-  return <Navigate to="/menu" replace />;
+  return <ClientApp />;
 }
