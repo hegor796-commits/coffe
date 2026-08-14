@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -29,6 +30,28 @@ import { AuthContext } from '../auth/auth.types';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger('Orders');
+
+  /**
+   * Best-effort побочка: реалтайм/бот/очередь не должны ронять уже
+   * сохранённый заказ. Если недоступен Redis (нет сервиса на проде) или бот —
+   * логируем и продолжаем, а не отдаём клиенту 500.
+   */
+  private async safe(label: string, fn: () => Promise<void> | void): Promise<void> {
+    try {
+      // Таймаут: если Redis недоступен, ioredis может ждать соединение —
+      // не даём побочке подвесить ответ клиенту.
+      await Promise.race([
+        Promise.resolve(fn()),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('таймаут 3с')), 3000),
+        ),
+      ]);
+    } catch (e) {
+      this.logger.warn(`Побочка «${label}» не выполнена: ${(e as Error).message}`);
+    }
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricing: OrderPricingService,
@@ -84,15 +107,20 @@ export class OrdersService {
       },
     });
 
-    await this.prisma.tenantCustomer.update({
-      where: { tenantId_customerId: { tenantId: user.tenantId, customerId: user.sub } },
+    // updateMany (а не update) не бросает P2025, если связки ещё нет —
+    // счётчик не критичен и не должен ронять заказ.
+    await this.prisma.tenantCustomer.updateMany({
+      where: { tenantId: user.tenantId, customerId: user.sub },
       data: { ordersCount: { increment: 1 } },
     });
 
     // Реалтайм в ленту бариста + уведомление в бот + отложенная автоотмена.
-    this.realtime.emitToLocation(location.id, WsEvent.OrderCreated, this.toUpdatePayload(order));
-    await this.notifications.notifyNewOrder(order.id);
-    await this.scheduleAutoCancel(order.id);
+    // Все три — best-effort: сбой Redis/бота не должен ронять заказ клиента.
+    await this.safe('realtime OrderCreated', () =>
+      this.realtime.emitToLocation(location.id, WsEvent.OrderCreated, this.toUpdatePayload(order)),
+    );
+    await this.safe('notifyNewOrder', () => this.notifications.notifyNewOrder(order.id));
+    await this.safe('scheduleAutoCancel', () => this.scheduleAutoCancel(order.id));
 
     return this.serialize(order);
   }
@@ -178,13 +206,16 @@ export class OrdersService {
       },
     });
 
+    // Побочки — best-effort: сбой Redis/бота не должен ронять смену статуса.
     const payload = this.toUpdatePayload(updated);
-    this.realtime.broadcastOrderUpdate(order.locationId, order.id, payload);
-    await this.notifications.notifyStatus(order.id);
+    await this.safe('realtime OrderUpdated', () =>
+      this.realtime.broadcastOrderUpdate(order.locationId, order.id, payload),
+    );
+    await this.safe('notifyStatus', () => this.notifications.notifyStatus(order.id));
 
     // Заказ принят/терминален — снимаем отложенную автоотмену.
     if (target !== OrderStatus.Created && target !== OrderStatus.Paid) {
-      await this.cancelAutoCancel(order.id);
+      await this.safe('cancelAutoCancel', () => this.cancelAutoCancel(order.id));
     }
 
     return this.serialize(updated);
