@@ -1,0 +1,343 @@
+// Схема БД платформы предзаказа кофе.
+// Мультитенантность: tenant_id во всех бизнес-таблицах.
+// Прикладное скоупирование по tenant_id — основной механизм изоляции;
+// RLS (см. migrations/*_rls.sql) добавляется как defense-in-depth.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantPlan {
+  trial
+  basic
+  pro
+}
+
+enum TenantStatus {
+  active
+  suspended
+}
+
+enum PaymentMode {
+  offline
+  online
+}
+
+enum StaffRole {
+  owner
+  manager
+  barista
+}
+
+enum OrderStatus {
+  created
+  pending_payment
+  paid
+  accepted
+  preparing
+  ready
+  completed
+  rejected
+  auto_cancelled
+  cancelled_by_client
+}
+
+enum PaymentStatus {
+  pending
+  succeeded
+  canceled
+  refunded
+}
+
+model Tenant {
+  id          String       @id @default(uuid())
+  name        String
+  slug        String       @unique
+  plan        TenantPlan   @default(trial)
+  status      TenantStatus @default(active)
+  paymentMode PaymentMode  @default(offline)
+  /// Брендинг: { primaryColor, logoUrl, ... }
+  branding    Json         @default("{}")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  locations       Location[]
+  staff           StaffUser[]
+  categories      Category[]
+  products        Product[]
+  modifierGroups  ModifierGroup[]
+  orders          Order[]
+  tenantCustomers TenantCustomer[]
+  staffInvites    StaffInvite[]
+  paymentCreds    PaymentCredential[]
+
+  @@map("tenant")
+}
+
+model Location {
+  id                String   @id @default(uuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name              String
+  address           String?
+  timezone          String   @default("Europe/Moscow")
+  /// Расписание: { mon: [["08:00","20:00"]], ... }
+  schedule          Json     @default("{}")
+  isAcceptingOrders Boolean  @default(true)
+  /// Лимит одновременных предзаказов на слот времени (защита от перегруза в пик).
+  maxOrdersPerSlot  Int      @default(5)
+  /// Длина слота в минутах для группировки времени готовности.
+  slotMinutes       Int      @default(15)
+  createdAt         DateTime @default(now())
+
+  staff        StaffUser[]
+  orders       Order[]
+  stopList     StopListItem[]
+  staffInvites StaffInvite[]
+
+  @@index([tenantId])
+  @@map("location")
+}
+
+model StaffUser {
+  id         String    @id @default(uuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  role       StaffRole
+  /// Telegram user id (bigint как строка для совместимости).
+  tgUserId   String
+  name       String?
+  isActive   Boolean   @default(true)
+  invitedBy  String?
+  createdAt  DateTime  @default(now())
+
+  @@unique([tenantId, tgUserId])
+  @@index([tenantId, role])
+  @@map("staff_user")
+}
+
+/// Приглашение сотрудника по одноразовой ссылке (startapp=join_<token>).
+model StaffInvite {
+  id         String    @id @default(uuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  role       StaffRole
+  token      String    @unique
+  name       String?
+  usedAt     DateTime?
+  usedByTgId String?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId])
+  @@map("staff_invite")
+}
+
+/// Глобальный профиль гостя (один Telegram-аккаунт на все кофейни).
+model Customer {
+  id        String   @id @default(uuid())
+  tgUserId  String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+
+  orders          Order[]
+  tenantCustomers TenantCustomer[]
+
+  @@map("customer")
+}
+
+/// Связь гость↔кофейня + агрегаты (для лояльности/статистики).
+model TenantCustomer {
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  firstOrderAt DateTime @default(now())
+  ordersCount  Int      @default(0)
+
+  @@id([tenantId, customerId])
+  @@map("tenant_customer")
+}
+
+model Category {
+  id       String  @id @default(uuid())
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name     String
+  sort     Int     @default(0)
+  isActive Boolean @default(true)
+
+  products Product[]
+
+  @@index([tenantId])
+  @@map("category")
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  photoUrl    String?
+  /// Базовая цена в копейках.
+  basePrice   Int
+  sort        Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  modifierGroups ProductModifierGroup[]
+  stopListItems  StopListItem[]
+
+  @@index([tenantId, categoryId])
+  @@map("product")
+}
+
+model ModifierGroup {
+  id         String   @id @default(uuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  minSelect  Int      @default(0)
+  maxSelect  Int      @default(1)
+  isRequired Boolean  @default(false)
+
+  options  ModifierOption[]
+  products ProductModifierGroup[]
+
+  @@index([tenantId])
+  @@map("modifier_group")
+}
+
+model ProductModifierGroup {
+  productId String
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  groupId   String
+  group     ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sort      Int           @default(0)
+
+  @@id([productId, groupId])
+  @@map("product_modifier_group")
+}
+
+model ModifierOption {
+  id         String        @id @default(uuid())
+  groupId    String
+  group      ModifierGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name       String
+  /// Надбавка к цене в копейках (может быть 0).
+  priceDelta Int           @default(0)
+  isDefault  Boolean       @default(false)
+  sort       Int           @default(0)
+
+  stopListItems StopListItem[]
+
+  @@index([groupId])
+  @@map("modifier_option")
+}
+
+/// Стоп-лист: временно недоступная позиция или опция в конкретной точке.
+model StopListItem {
+  id         String          @id @default(uuid())
+  locationId String
+  location   Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  productId  String?
+  product    Product?        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  optionId   String?
+  option     ModifierOption? @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  /// null = бессрочно (до ручного снятия), иначе автоснятие после.
+  until      DateTime?
+  createdAt  DateTime        @default(now())
+
+  @@unique([locationId, productId, optionId])
+  @@index([locationId])
+  @@map("stop_list_item")
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  tenantId        String
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  locationId      String
+  location        Location    @relation(fields: [locationId], references: [id])
+  customerId      String
+  customer        Customer    @relation(fields: [customerId], references: [id])
+  /// Короткий читаемый номер дня, напр. "A-17".
+  number          String
+  status          OrderStatus @default(created)
+  paymentMode     PaymentMode @default(offline)
+  /// Снапшот позиций (OrderItemSnapshot[]) с ценами на момент заказа.
+  items           Json
+  /// Итог в копейках.
+  total           Int
+  channel         String      @default("tma")
+  comment         String?
+  readyAtRequested DateTime?
+  readyAtPromised  DateTime?
+  /// История переходов: [{ status, at, by }].
+  statusHistory   Json        @default("[]")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  payment Payment?
+
+  @@unique([tenantId, number, createdAt])
+  @@index([tenantId, status, createdAt])
+  @@index([locationId, status])
+  @@index([customerId])
+  @@map("order")
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  orderId           String        @unique
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider          String        @default("yookassa")
+  providerPaymentId String?
+  status            PaymentStatus @default(pending)
+  amount            Int
+  idempotencyKey    String        @unique
+  payload           Json          @default("{}")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@map("payment")
+}
+
+/// Зашифрованные ключи эквайринга тенанта (фаза 2).
+model PaymentCredential {
+  tenantId     String
+  tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider     String
+  /// shopId провайдера.
+  shopId       String
+  /// Секрет, зашифрованный AES-256-GCM (base64: iv:tag:ciphertext).
+  secretCipher String
+
+  @@id([tenantId, provider])
+  @@map("payment_credential")
+}
+
+model NotificationLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  orderId   String?
+  channel   String
+  status    String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("notification_log")
+}
