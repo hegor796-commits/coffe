@@ -85,9 +85,15 @@ const PRODUCTS = [
 ];
 const CAT_LABELS = { coffee: 'Кофе', special: 'Спешлти', dessert: 'Десерты' };
 
+// ---------- Модификаторы (как в модели бэкенда) ----------
+const SIZES = [{ n: 'S · 250 мл', d: 0 }, { n: 'M · 350 мл', d: 40 }, { n: 'L · 450 мл', d: 70 }];
+const MILKS = [{ n: 'Обычное', d: 0 }, { n: 'Растительное', d: 50 }, { n: 'Банановое', d: 60 }];
+const hasMods = (p) => p.cat === 'coffee' || p.cat === 'special';
+
 // ---------- Состояние ----------
 let activeCat = 'all';
 let query = '';
+// корзина: ключ = `${id}|${sizeIdx}|${milkIdx}` -> { id, name, mods, unit, qty }
 const cart = {};
 let orderSeq = 4;
 
@@ -143,14 +149,15 @@ function renderMenu() {
     if (!items.length) { grid.innerHTML = '<div class="empty-note" style="grid-column:1/-1">Ничего не найдено</div>'; return; }
     grid.innerHTML = items.map((p) => {
         const out = stopState[p.id];
+        const open = out ? '' : `onclick="openSheet('${p.id}')"`;
         return `
         <article class="menu-card ${out ? 'sold-out' : ''}">
-            <div class="card-img cat-${p.cat}">${cupArt()}</div>
-            <div class="card-body">
+            <div class="card-img cat-${p.cat}" ${open}>${cupArt()}</div>
+            <div class="card-body" ${open}>
                 <h2 class="card-title">${p.name}</h2>
                 <span class="card-price">${money(p.price)}</span>
                 ${out ? '<span class="card-soldout">Стоп</span>'
-                      : `<button class="add-btn" onclick="addToCart('${p.id}')" aria-label="Добавить ${p.name}">+</button>`}
+                      : `<button class="add-btn" onclick="event.stopPropagation();addSimple('${p.id}')" aria-label="Добавить ${p.name}">+</button>`}
             </div>
         </article>`;
     }).join('');
@@ -164,20 +171,95 @@ function setCat(btn, cat) {
 function setSearch(v) { query = v; renderMenu(); }
 
 // ============================================================
+//  Клиент: карточка товара (нижняя шторка с модификаторами)
+// ============================================================
+let sheet = null;
+function modsText(p, size, milk) {
+    if (!hasMods(p)) return '';
+    const parts = [SIZES[size].n.split(' · ')[0]];
+    if (milk > 0) parts.push(MILKS[milk].n.toLowerCase());
+    return parts.join(' · ');
+}
+function unitPrice(p, size, milk) {
+    return p.price + (hasMods(p) ? SIZES[size].d + MILKS[milk].d : 0);
+}
+function openSheet(id) {
+    sheet = { id, size: 1, milk: 0, qty: 1 };
+    renderSheet();
+}
+function closeSheet() {
+    const el = document.getElementById('sheet');
+    el.classList.remove('show');
+    setTimeout(() => { el.innerHTML = ''; }, 260);
+    sheet = null;
+}
+function selSize(i) { sheet.size = i; renderSheet(); }
+function selMilk(i) { sheet.milk = i; renderSheet(); }
+function sheetQty(d) { sheet.qty = Math.max(1, sheet.qty + d); renderSheet(); }
+function renderSheet() {
+    const p = PRODUCTS.find((x) => x.id === sheet.id);
+    const el = document.getElementById('sheet');
+    const chips = (arr, sel, fn) => arr.map((o, i) =>
+        `<button class="opt ${i === sel ? 'on' : ''}" onclick="${fn}(${i})">
+            <span>${o.n}</span>${o.d ? `<b>+${o.d} ₽</b>` : ''}
+        </button>`).join('');
+    const unit = unitPrice(p, sheet.size, sheet.milk);
+    el.innerHTML = `
+        <div class="sheet-scrim" onclick="closeSheet()"></div>
+        <div class="sheet-panel">
+            <div class="sheet-grab"></div>
+            <div class="sheet-head">
+                <div class="sheet-thumb cat-${p.cat}">${cupArt()}</div>
+                <div><div class="sheet-name">${p.name}</div><div class="sheet-base">${money(p.price)} · базовая</div></div>
+                <button class="sheet-x" onclick="closeSheet()" aria-label="Закрыть">✕</button>
+            </div>
+            ${hasMods(p) ? `
+            <div class="opt-group"><div class="opt-label">Размер</div><div class="opts">${chips(SIZES, sheet.size, 'selSize')}</div></div>
+            <div class="opt-group"><div class="opt-label">Молоко</div><div class="opts">${chips(MILKS, sheet.milk, 'selMilk')}</div></div>`
+            : '<div class="opt-note">Без дополнительных опций</div>'}
+            <div class="sheet-foot">
+                <div class="qty">
+                    <button onclick="sheetQty(-1)" aria-label="Меньше">−</button>
+                    <span>${sheet.qty}</span>
+                    <button onclick="sheetQty(1)" aria-label="Больше">+</button>
+                </div>
+                <button class="main-btn" onclick="addConfigured()">Добавить · ${money(unit * sheet.qty)}</button>
+            </div>
+        </div>`;
+    requestAnimationFrame(() => el.classList.add('show'));
+}
+function addConfigured() {
+    const s = sheet;
+    addLine(s.id, s.size, s.milk, s.qty);
+    const p = PRODUCTS.find((x) => x.id === s.id);
+    closeSheet();
+    toast(p.name + ' — в корзине');
+}
+
+// ============================================================
 //  Клиент: корзина
 // ============================================================
-function addToCart(id) {
-    cart[id] = (cart[id] || 0) + 1;
+function addSimple(id) {
+    const p = PRODUCTS.find((x) => x.id === id);
+    addLine(id, hasMods(p) ? 1 : 0, 0, 1);
     updateCartBadge();
-    toast(PRODUCTS.find((p) => p.id === id).name + ' — в корзине');
+    toast(p.name + ' — в корзине');
 }
-function changeQty(id, d) {
-    cart[id] = (cart[id] || 0) + d;
-    if (cart[id] <= 0) delete cart[id];
+function addLine(id, size, milk, qty) {
+    const p = PRODUCTS.find((x) => x.id === id);
+    const key = `${id}|${hasMods(p) ? size : ''}|${hasMods(p) ? milk : ''}`;
+    if (cart[key]) cart[key].qty += qty;
+    else cart[key] = { id, name: p.name, mods: modsText(p, size, milk), unit: unitPrice(p, size, milk), qty };
+    updateCartBadge();
+}
+function changeQty(key, d) {
+    if (!cart[key]) return;
+    cart[key].qty += d;
+    if (cart[key].qty <= 0) delete cart[key];
     updateCartBadge(); renderCart();
 }
-function cartCount() { return Object.values(cart).reduce((a, b) => a + b, 0); }
-function cartTotal() { return Object.entries(cart).reduce((s, [id, q]) => s + priceOf(id) * q, 0); }
+function cartCount() { return Object.values(cart).reduce((s, v) => s + v.qty, 0); }
+function cartTotal() { return Object.values(cart).reduce((s, v) => s + v.unit * v.qty, 0); }
 function updateCartBadge() {
     const b = document.getElementById('cart-badge');
     const n = cartCount();
@@ -185,8 +267,8 @@ function updateCartBadge() {
 }
 function renderCart() {
     const wrap = document.getElementById('view-client-cart');
-    const ids = Object.keys(cart);
-    if (!ids.length) {
+    const keys = Object.keys(cart);
+    if (!keys.length) {
         wrap.innerHTML = `
             <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div></div>
             <div class="empty">
@@ -197,24 +279,25 @@ function renderCart() {
             </div>`;
         return;
     }
-    const rows = ids.map((id) => {
-        const p = PRODUCTS.find((x) => x.id === id);
+    const rows = keys.map((k) => {
+        const v = cart[k];
+        const p = PRODUCTS.find((x) => x.id === v.id);
         return `
         <div class="cart-item">
-            <div class="ci-thumb">${cupArt()}</div>
+            <div class="ci-thumb cat-${p.cat}">${cupArt()}</div>
             <div class="ci-main">
-                <div class="ci-name">${p.name}</div>
-                <div class="ci-price">${money(p.price)}</div>
+                <div class="ci-name">${v.name}</div>
+                <div class="ci-price">${v.mods ? v.mods + ' · ' : ''}${money(v.unit)}</div>
             </div>
             <div class="qty">
-                <button onclick="changeQty('${id}',-1)" aria-label="Меньше">−</button>
-                <span>${cart[id]}</span>
-                <button onclick="changeQty('${id}',1)" aria-label="Больше">+</button>
+                <button onclick="changeQty('${k}',-1)" aria-label="Меньше">−</button>
+                <span>${v.qty}</span>
+                <button onclick="changeQty('${k}',1)" aria-label="Больше">+</button>
             </div>
         </div>`;
     }).join('');
     wrap.innerHTML = `
-        <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div><div class="rule"></div></div>
+        <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div></div>
         <span class="eyebrow">Ваш заказ</span>
         <h1 class="page-title">Корзина</h1>
         <div class="cart-list">${rows}</div>
@@ -228,11 +311,11 @@ function renderCart() {
 function checkout() {
     if (!cartCount()) return;
     const id = 'А-' + orderSeq++;
-    const names = Object.keys(cart).map((k) => PRODUCTS.find((p) => p.id === k).name);
+    const vals = Object.values(cart);
     const total = cartTotal();
-    clientOrders.unshift({ id, date: 'сейчас', items: names.join(' · '), total, status: 'preparing', label: 'В работе' });
+    clientOrders.unshift({ id, date: 'сейчас', items: vals.map((v) => v.name).join(' · '), total, status: 'preparing', label: 'В работе' });
     baristaOrders.unshift({ id, ts: 'сейчас', customer: 'Вы', status: 'new',
-        items: Object.entries(cart).map(([k, q]) => ({ q, n: PRODUCTS.find((p) => p.id === k).name, m: '' })) });
+        items: vals.map((v) => ({ q: v.qty, n: v.name, m: v.mods })) });
     Object.keys(cart).forEach((k) => delete cart[k]);
     updateCartBadge(); renderCart(); renderClientOrders(); renderBarista();
     toast('Заказ ' + id + ' оформлен ✓');
