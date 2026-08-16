@@ -1,8 +1,8 @@
 {
-  "name": "coffee-preorder",
+  "name": "nutri-bot",
   "version": "0.1.0",
   "private": true,
-  "description": "White-label платформа предзаказа кофе: Telegram Mini App с ролями клиент/бариста/админ",
+  "description": "Нутри — каркас Telegram Mini App для предзаказа с ролями клиент/сотрудник/админ (на базе платформы предзаказа)",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20"
