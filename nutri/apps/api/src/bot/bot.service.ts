@@ -30,7 +30,7 @@ export class BotService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     this.bot.command('start', async (ctx) => {
       await ctx.reply(
-        'Добро пожаловать в Нутри 🌿\nОткройте мини-приложение, чтобы сделать заказ.',
+        'Добро пожаловать в «Любовь-Морковь» ☕\nОткройте мини-приложение, чтобы сделать заказ без очереди.',
         {
           reply_markup: new InlineKeyboard().webApp('Открыть меню', this.appUrl),
         },

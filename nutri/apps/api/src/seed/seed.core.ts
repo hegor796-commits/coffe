@@ -38,10 +38,10 @@ export async function seedDemo(prisma: Db, opts: SeedOptions = {}): Promise<void
     update: {},
     create: {
       slug,
-      name: 'Демо Нутри',
+      name: 'Любовь-Морковь',
       plan: 'trial',
       paymentMode: 'offline',
-      branding: { primaryColor: '#3E7D5A', logoUrl: null },
+      branding: { primaryColor: '#6B1D1D', logoUrl: null },
     },
   });
 
