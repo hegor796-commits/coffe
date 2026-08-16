@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Любовь-Марковь | Мини-приложение</title>
-    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,500&family=PT+Sans:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,7 +15,6 @@
             <button id="rs-barista" onclick="switchRole('barista')">Бариста</button>
             <button id="rs-owner" onclick="switchRole('owner')">Владелец</button>
         </div>
-        <div class="preview-cap">превью · три роли одного приложения</div>
     </div>
 
     <div class="app-container">
@@ -27,7 +26,7 @@
             <main id="view-client-menu" class="view active">
                 <div class="brand-hero">
                     <div id="logo-mark"></div>
-                    <div class="wordmark">ЛЮБОВЬ-МАРКОВЬ</div>
+                    <div class="wordmark">Любовь-Марковь</div>
                     <div class="sub">мини-приложение</div>
                 </div>
                 <h1 class="page-title">Меню кофейни</h1>
@@ -53,7 +52,7 @@
 
             <!-- Заказы -->
             <main id="view-client-orders" class="view">
-                <div class="brand-bar"><div class="wordmark">ЛЮБОВЬ-МАРКОВЬ</div><div class="rule"></div></div>
+                <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div><div class="rule"></div></div>
                 <span class="eyebrow">История</span>
                 <h1 class="page-title">Мои заказы</h1>
                 <div class="orders-list" id="client-orders-list"></div>
@@ -69,7 +68,7 @@
         <!-- ==================== БАРИСТА ==================== -->
         <div class="role-app" id="role-barista">
             <main id="view-barista-feed" class="view active">
-                <div class="brand-bar"><div class="wordmark">ЛЮБОВЬ-МАРКОВЬ</div><div class="rule"></div><span class="role-tag">Бариста</span></div>
+                <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div><div class="rule"></div><span class="role-tag">Бариста</span></div>
                 <span class="eyebrow">Смена · <span id="feed-count">0</span> активных</span>
                 <h1 class="page-title">Лента заказов</h1>
                 <div class="filter-row">
@@ -82,14 +81,14 @@
             </main>
 
             <main id="view-barista-archive" class="view">
-                <div class="brand-bar"><div class="wordmark">ЛЮБОВЬ-МАРКОВЬ</div><div class="rule"></div><span class="role-tag">Бариста</span></div>
+                <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div><div class="rule"></div><span class="role-tag">Бариста</span></div>
                 <span class="eyebrow">За сегодня</span>
                 <h1 class="page-title">Архив</h1>
                 <div class="orders-list" id="barista-archive"></div>
             </main>
 
             <main id="view-barista-stop" class="view">
-                <div class="brand-bar"><div class="wordmark">ЛЮБОВЬ-МАРКОВЬ</div><div class="rule"></div><span class="role-tag">Бариста</span></div>
+                <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div><div class="rule"></div><span class="role-tag">Бариста</span></div>
                 <span class="eyebrow">Наличие</span>
                 <h1 class="page-title">Стоп-лист</h1>
                 <div class="stop-list" id="stop-list"></div>
@@ -105,14 +104,14 @@
         <!-- ==================== ВЛАДЕЛЕЦ ==================== -->
         <div class="role-app" id="role-owner">
             <main id="view-owner-summary" class="view active">
-                <div class="brand-bar"><div class="wordmark">ЛЮБОВЬ-МАРКОВЬ</div><div class="rule"></div><span class="role-tag">Владелец</span></div>
+                <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div><div class="rule"></div><span class="role-tag">Владелец</span></div>
                 <span class="eyebrow">Сегодня · «На Тверской»</span>
                 <h1 class="page-title">Сводка</h1>
                 <div class="stat-grid">
                     <div class="stat-tile accent">
                         <div class="stat-label">Выручка</div>
                         <div class="stat-value">18 240 ₽</div>
-                        <div class="stat-delta" style="color:#EFD9A2">▲ 12% к вчера</div>
+                        <div class="stat-delta" style="color:#FFE0CF">▲ 12% к вчера</div>
                     </div>
                     <div class="stat-tile"><div class="stat-label">Заказов</div><div class="stat-value">83</div><div class="stat-delta">▲ 9</div></div>
                     <div class="stat-tile"><div class="stat-label">Средний чек</div><div class="stat-value">220 ₽</div><div class="stat-delta down">▼ 3%</div></div>
@@ -152,13 +151,13 @@
             </main>
 
             <main id="view-owner-menu" class="view">
-                <div class="brand-bar"><div class="wordmark">ЛЮБОВЬ-МАРКОВЬ</div><div class="rule"></div><span class="role-tag">Владелец</span></div>
+                <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div><div class="rule"></div><span class="role-tag">Владелец</span></div>
                 <div class="block-head" style="margin-top:6px"><h1 class="page-title" style="margin:0">Меню</h1><button class="link-btn" onclick="toast('Демо: добавление позиции')">+ Позиция</button></div>
                 <div class="list-block" id="owner-menu-list"></div>
             </main>
 
             <main id="view-owner-team" class="view">
-                <div class="brand-bar"><div class="wordmark">ЛЮБОВЬ-МАРКОВЬ</div><div class="rule"></div><span class="role-tag">Владелец</span></div>
+                <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div><div class="rule"></div><span class="role-tag">Владелец</span></div>
                 <span class="eyebrow">Доступы</span>
                 <h1 class="page-title">Команда</h1>
                 <div class="list-block">

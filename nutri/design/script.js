@@ -1,56 +1,58 @@
 /* ============================================================
-   ЛЮБОВЬ-МАРКОВЬ — прототип мини-приложения (демо-данные в памяти)
+   Любовь-Марковь — прототип мини-приложения (демо-данные в памяти)
    Роли: клиент, бариста, владелец. Живые взаимодействия:
    поиск, корзина, оформление, смена статусов заказа, стоп-лист.
    ============================================================ */
 
 // ---------- Рисованная графика (SVG) ----------
 function logoMark() {
-    return `<svg class="mark" viewBox="56 26 106 72" fill="none" stroke="currentColor"
-        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <!-- пара -->
-        <circle cx="82" cy="50" r="7"/>
-        <circle cx="98" cy="54" r="6.5"/>
-        <path d="M65 90 C65 65 75 60 85 62 C90 63 95 70 95 75"/>
-        <path d="M90 75 C95 65 105 65 110 68 C117 72 120 80 120 90"/>
-        <line x1="60" y1="90" x2="125" y2="90"/>
-        <!-- сердечки -->
-        <path d="M98 35 C98 30 91 30 91 35 C91 40 98 44 98 44 C98 44 105 40 105 35 C105 30 98 30 98 35Z" stroke-width="1.5"/>
-        <path d="M112 40 C112 36 107 36 107 40 C107 44 112 47 112 47 C112 47 117 44 117 40 C117 36 112 36 112 40Z" stroke-width="1.5"/>
-        <!-- чашка -->
-        <path d="M135 76 L135 84 C135 90 150 90 150 84 L150 76 Z"/>
-        <path d="M150 78 C156 78 156 83 150 83"/>
-        <path d="M130 90 C130 93 155 93 155 90"/>
-        <path d="M139 71 C137 66 142 63 140 58" stroke-width="1.5"/>
-        <path d="M145 71 C143 66 148 63 146 58" stroke-width="1.5"/>
+    return `<svg class="mark" viewBox="58 28 168 120" fill="none" stroke="currentColor"
+        stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <!-- земля -->
+        <path d="M66 133 C104 140 150 140 168 132" stroke-width="1.3" opacity="0.5"/>
+        <!-- левый (худи), сидит -->
+        <path d="M70 131 C63 104 72 74 92 74 C108 74 114 100 110 126 C109 130 105 132 100 132 L77 132 C73 132 70 132 70 131 Z"/>
+        <circle cx="90" cy="53" r="14.5"/>
+        <path d="M77 98 C88 92 101 95 107 104" stroke-width="1.4" opacity="0.6"/>
+        <!-- правая (платье), сидит: юбка веером -->
+        <path d="M104 129 C99 104 108 76 125 78 C143 80 153 104 153 124 C153 130 149 132 142 132 L110 132 C106 132 104 131 104 129 Z"/>
+        <circle cx="121" cy="59" r="12.5"/>
+        <path d="M111 52 C113 48 117 47 121 48" stroke-width="1.3" opacity="0.6"/>
+        <path d="M120 96 C120 110 119 122 119 131" stroke-width="1.2" opacity="0.4"/>
+        <path d="M136 96 C138 110 140 122 140 131" stroke-width="1.2" opacity="0.4"/>
+        <!-- рука через плечо + кисть -->
+        <path d="M100 70 C115 60 132 64 140 79"/>
+        <path d="M140 79 l-4 4 M140 79 l0 5 M140 79 l5 2" stroke-width="1.6"/>
+        <!-- ступни -->
+        <path d="M84 132 l-6 4 M122 132 l6 4 M104 132 l1 5" stroke-width="1.7"/>
+        <!-- сердце -->
+        <path d="M156 40 C154 33 145 33 145 41 C145 49 156 55 156 55 C156 55 167 49 167 41 C167 33 158 33 156 40 Z" stroke-width="1.7"/>
+        <!-- чашка кофе -->
+        <ellipse cx="192" cy="96" rx="12" ry="3.2"/>
+        <path d="M180 96 C180 110 204 110 204 96"/>
+        <path d="M204 99 C212 99 212 107 203 106"/>
+        <path d="M173 114 C176 118 208 118 211 114"/>
+        <path d="M185 90 C183 84 189 81 187 75" stroke-width="1.5"/>
+        <path d="M195 90 C193 84 199 81 197 75" stroke-width="1.5"/>
     </svg>`;
 }
 function cupArt() {
-    return `<svg width="86" height="70" viewBox="0 0 100 82" fill="none" stroke="currentColor"
-        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M38 12 C35 17 41 20 38 26"/>
-        <path d="M50 9 C47 15 53 18 50 25"/>
-        <path d="M62 12 C59 17 65 20 62 26"/>
-        <ellipse cx="50" cy="36" rx="24" ry="6"/>
-        <path d="M26 36 C26 54 31 62 50 62 C69 62 74 54 74 36"/>
-        <path d="M74 40 C88 40 88 56 73 55"/>
-        <ellipse cx="50" cy="68" rx="31" ry="4"/>
-        <path d="M31 37 C33 47 40 52 50 52 C60 52 67 47 69 37" opacity="0.5"/>
+    // Современная плоская чашка (для плиток и миниатюр)
+    return `<svg width="72" height="60" viewBox="0 0 58 50" fill="none" stroke="currentColor"
+        stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M11 19 H41 V27 C41 36 34 42 26 42 C18 42 11 36 11 27 Z"/>
+        <path d="M41 23 C49 23 49 35 41 34"/>
+        <path d="M19 5 C17 8 21 10 19 13 M26 4 C24 7 28 9 26 12 M33 5 C31 8 35 10 33 13" stroke-width="2.6"/>
     </svg>`;
 }
 function engravingCup() {
-    return `<svg class="engraving" width="150" height="132" viewBox="0 0 100 90" fill="none"
-        stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M37 8 C33 15 41 19 37 27"/>
-        <path d="M50 5 C46 13 54 17 50 26"/>
-        <path d="M63 8 C59 15 67 19 63 27"/>
-        <ellipse cx="50" cy="37" rx="26" ry="6.5"/>
-        <ellipse cx="50" cy="37" rx="21" ry="4.6" opacity="0.55"/>
-        <path d="M24 37 C24 57 30 66 50 66 C70 66 76 57 76 37"/>
-        <path d="M76 41 C92 41 92 60 75 58"/>
-        <ellipse cx="50" cy="73" rx="34" ry="4.6"/>
-        <ellipse cx="50" cy="73" rx="27" ry="3" opacity="0.5"/>
-        <path d="M30 79 C36 84 64 84 70 79" opacity="0.6"/>
+    // Крупная дружелюбная чашка для пустого состояния
+    return `<svg width="70" height="66" viewBox="0 0 64 60" fill="none" stroke="currentColor"
+        stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 22 H44 V31 C44 41 36 48 28 48 C20 48 12 41 12 31 Z"/>
+        <path d="M44 26 C53 26 53 39 44 38"/>
+        <path d="M8 52 C16 56 40 56 48 52"/>
+        <path d="M20 5 C18 9 22 11 20 15 M28 4 C26 8 30 10 28 14 M36 5 C34 9 38 11 36 15" stroke-width="2.8"/>
     </svg>`;
 }
 const IC = {
@@ -186,9 +188,9 @@ function renderCart() {
     const ids = Object.keys(cart);
     if (!ids.length) {
         wrap.innerHTML = `
-            <div class="brand-bar"><div class="wordmark">ЛЮБОВЬ-МАРКОВЬ</div><div class="rule"></div></div>
+            <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div></div>
             <div class="empty">
-                ${engravingCup()}
+                <div class="illus">${engravingCup()}</div>
                 <h2>Заказ пуст</h2>
                 <p>Добавьте что-нибудь из меню,<br>чтобы забрать без очереди.</p>
                 <button class="main-btn auto" onclick="switchTab('client','menu')">Открыть меню</button>
@@ -212,7 +214,7 @@ function renderCart() {
         </div>`;
     }).join('');
     wrap.innerHTML = `
-        <div class="brand-bar"><div class="wordmark">ЛЮБОВЬ-МАРКОВЬ</div><div class="rule"></div></div>
+        <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div><div class="rule"></div></div>
         <span class="eyebrow">Ваш заказ</span>
         <h1 class="page-title">Корзина</h1>
         <div class="cart-list">${rows}</div>
