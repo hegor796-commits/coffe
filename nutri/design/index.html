@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Любовь-Морковь | Мини-приложение</title>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Montserrat:wght@400;500;600&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+
+        <!-- Переключатель ролей (только для превью прототипа) -->
+        <div class="role-switch">
+            <button id="rs-client" class="active" onclick="switchRole('client')">Клиент</button>
+            <button id="rs-barista" onclick="switchRole('barista')">Бариста</button>
+            <button id="rs-owner" onclick="switchRole('owner')">Владелец</button>
+        </div>
+        <div class="role-hint">превью · три роли одного приложения</div>
+
+        <!-- Шапка -->
+        <header class="header">
+            <div class="logo-title">ЛЮБОВЬ-МОРКОВЬ</div>
+            <div class="subtitle">мини-приложение</div>
+            <span class="role-badge" id="role-badge">Клиент</span>
+        </header>
+
+        <!-- ==================== КЛИЕНТ ==================== -->
+        <div class="role-app active" id="role-client">
+            <!-- Меню -->
+            <main id="view-client-menu" class="view active">
+                <span class="section-eyebrow">Свежая обжарка</span>
+                <h1 class="page-title">Меню кофейни</h1>
+                <div class="categories">
+                    <button class="cat-btn active" onclick="setCat(this,'all')">Всё</button>
+                    <button class="cat-btn" onclick="setCat(this,'coffee')">Кофе</button>
+                    <button class="cat-btn" onclick="setCat(this,'special')">Спешлти</button>
+                    <button class="cat-btn" onclick="setCat(this,'dessert')">Десерты</button>
+                </div>
+                <div class="menu-grid" id="menu-grid"></div>
+            </main>
+
+            <!-- Корзина (рендерится в JS) -->
+            <main id="view-client-cart" class="view"></main>
+
+            <!-- Заказы -->
+            <main id="view-client-orders" class="view">
+                <span class="history-label">История</span>
+                <h1 class="page-title">Мои заказы</h1>
+                <div class="orders-list" id="client-orders-list"></div>
+            </main>
+
+            <nav class="bottom-nav">
+                <button id="nav-client-menu" class="nav-item active" onclick="switchTab('client','menu')">МЕНЮ</button>
+                <button id="nav-client-cart" class="nav-item" onclick="switchTab('client','cart')">КОРЗИНА<span class="nav-badge" id="cart-badge">0</span></button>
+                <button id="nav-client-orders" class="nav-item" onclick="switchTab('client','orders')">ЗАКАЗЫ</button>
+            </nav>
+        </div>
+
+        <!-- ==================== БАРИСТА ==================== -->
+        <div class="role-app" id="role-barista">
+            <!-- Лента -->
+            <main id="view-barista-feed" class="view active">
+                <span class="section-eyebrow">Смена · <span id="feed-count">0</span> активных</span>
+                <h1 class="page-title">Лента заказов</h1>
+                <div class="filter-row">
+                    <button class="chip active" onclick="setBaristaFilter(this,'active')">Все</button>
+                    <button class="chip" onclick="setBaristaFilter(this,'new')">Новые</button>
+                    <button class="chip" onclick="setBaristaFilter(this,'work')">В работе</button>
+                    <button class="chip" onclick="setBaristaFilter(this,'ready')">Готовы</button>
+                </div>
+                <div id="barista-feed"></div>
+            </main>
+
+            <!-- Архив -->
+            <main id="view-barista-archive" class="view">
+                <span class="section-eyebrow">За сегодня</span>
+                <h1 class="page-title">Архив</h1>
+                <div class="orders-list" id="barista-archive"></div>
+            </main>
+
+            <!-- Стоп-лист -->
+            <main id="view-barista-stop" class="view">
+                <span class="section-eyebrow">Наличие</span>
+                <h1 class="page-title">Стоп-лист</h1>
+                <div class="stop-list" id="stop-list"></div>
+            </main>
+
+            <nav class="bottom-nav">
+                <button id="nav-barista-feed" class="nav-item active" onclick="switchTab('barista','feed')">ЛЕНТА</button>
+                <button id="nav-barista-archive" class="nav-item" onclick="switchTab('barista','archive')">АРХИВ</button>
+                <button id="nav-barista-stop" class="nav-item" onclick="switchTab('barista','stop')">СТОП-ЛИСТ</button>
+            </nav>
+        </div>
+
+        <!-- ==================== ВЛАДЕЛЕЦ ==================== -->
+        <div class="role-app" id="role-owner">
+            <!-- Сводка -->
+            <main id="view-owner-summary" class="view active">
+                <span class="section-eyebrow">Сегодня · точка «На Тверской»</span>
+                <h1 class="page-title">Сводка</h1>
+                <div class="stat-grid">
+                    <div class="stat-tile accent">
+                        <div class="stat-label">Выручка</div>
+                        <div class="stat-value">18 240 ₽</div>
+                        <div class="stat-delta" style="color:#F4E2DE">▲ 12% к вчера</div>
+                    </div>
+                    <div class="stat-tile">
+                        <div class="stat-label">Заказов</div>
+                        <div class="stat-value">83</div>
+                        <div class="stat-delta">▲ 9</div>
+                    </div>
+                    <div class="stat-tile">
+                        <div class="stat-label">Средний чек</div>
+                        <div class="stat-value">220 ₽</div>
+                        <div class="stat-delta down">▼ 3%</div>
+                    </div>
+                    <div class="stat-tile">
+                        <div class="stat-label">Отменённых</div>
+                        <div class="stat-value">2</div>
+                        <div class="stat-delta">в норме</div>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <h3>Заказы по часам</h3>
+                    <div class="bars">
+                        <div class="bar" style="height:22%"><span>8</span></div>
+                        <div class="bar peak" style="height:96%"><span>9</span></div>
+                        <div class="bar" style="height:74%"><span>10</span></div>
+                        <div class="bar" style="height:48%"><span>11</span></div>
+                        <div class="bar" style="height:60%"><span>12</span></div>
+                        <div class="bar" style="height:82%"><span>13</span></div>
+                        <div class="bar" style="height:54%"><span>14</span></div>
+                        <div class="bar" style="height:38%"><span>15</span></div>
+                        <div class="bar" style="height:44%"><span>16</span></div>
+                        <div class="bar" style="height:30%"><span>17</span></div>
+                        <div class="bar" style="height:18%"><span>18</span></div>
+                    </div>
+                </div>
+
+                <div class="block-title"><h3>Точки</h3><button class="link-btn" onclick="toast('Демо: добавление точки')">+ Точка</button></div>
+                <div class="list-block">
+                    <div class="list-row">
+                        <div class="lr-emoji">📍</div>
+                        <div class="lr-main">
+                            <div class="lr-title">На Тверской</div>
+                            <div class="lr-sub"><span class="dot on"></span>принимает заказы · 1 бариста на смене</div>
+                        </div>
+                        <div class="lr-right"><span class="role-chip">открыта</span></div>
+                    </div>
+                    <div class="list-row">
+                        <div class="lr-emoji">📍</div>
+                        <div class="lr-main">
+                            <div class="lr-title">В Депо</div>
+                            <div class="lr-sub"><span class="dot off"></span>закрыта до 08:00</div>
+                        </div>
+                        <div class="lr-right"><span class="role-chip">пауза</span></div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Меню -->
+            <main id="view-owner-menu" class="view">
+                <div class="block-title" style="margin-top:6px">
+                    <h1 class="page-title" style="margin:0">Меню</h1>
+                    <button class="link-btn" onclick="toast('Демо: добавление позиции')">+ Позиция</button>
+                </div>
+                <div class="list-block" id="owner-menu-list"></div>
+            </main>
+
+            <!-- Команда -->
+            <main id="view-owner-team" class="view">
+                <span class="section-eyebrow">Доступы</span>
+                <h1 class="page-title">Команда</h1>
+                <div class="list-block">
+                    <div class="list-row">
+                        <div class="lr-emoji">👑</div>
+                        <div class="lr-main">
+                            <div class="lr-title">Вы</div>
+                            <div class="lr-sub"><span class="dot on"></span>активен</div>
+                        </div>
+                        <div class="lr-right"><span class="role-chip owner">Владелец</span></div>
+                    </div>
+                    <div class="list-row">
+                        <div class="lr-emoji">🧑‍🍳</div>
+                        <div class="lr-main">
+                            <div class="lr-title">Марина</div>
+                            <div class="lr-sub"><span class="dot on"></span>на смене</div>
+                        </div>
+                        <div class="lr-right"><span class="role-chip barista">Бариста</span></div>
+                    </div>
+                    <div class="list-row">
+                        <div class="lr-emoji">🧑‍🍳</div>
+                        <div class="lr-main">
+                            <div class="lr-title">Костя</div>
+                            <div class="lr-sub"><span class="dot off"></span>не на смене</div>
+                        </div>
+                        <div class="lr-right"><span class="role-chip barista">Бариста</span></div>
+                    </div>
+                </div>
+                <button class="main-btn dark" style="margin-top:16px" onclick="toast('Ссылка-приглашение скопирована')">Пригласить сотрудника</button>
+            </main>
+
+            <nav class="bottom-nav">
+                <button id="nav-owner-summary" class="nav-item active" onclick="switchTab('owner','summary')">СВОДКА</button>
+                <button id="nav-owner-menu" class="nav-item" onclick="switchTab('owner','menu')">МЕНЮ</button>
+                <button id="nav-owner-team" class="nav-item" onclick="switchTab('owner','team')">КОМАНДА</button>
+            </nav>
+        </div>
+
+        <div class="toast" id="toast"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
