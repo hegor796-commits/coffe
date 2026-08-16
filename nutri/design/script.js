@@ -6,22 +6,23 @@
 
 // ---------- Рисованная графика (SVG) ----------
 function logoMark() {
-    return `<svg class="mark" viewBox="0 0 130 82" fill="none" stroke="currentColor"
-        stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <!-- пара, сидящая в обнимку (со спины) -->
-        <path d="M30 74 C28 56 33 47 43 47 C50 47 54 53 53 74"/>
-        <path d="M50 74 C49 53 57 45 67 46 C77 47 79 57 77 74"/>
-        <circle cx="43" cy="39" r="7.5"/>
-        <circle cx="63" cy="37" r="7.5"/>
-        <path d="M62 45 C57 41 50 42 47 46"/>
-        <!-- сердечко -->
-        <path d="M55 18 C53 14 47 15 47 20 C47 24 53 27 55 29 C57 27 63 24 63 20 C63 15 57 14 55 18Z"/>
-        <!-- чашка кофе -->
-        <path d="M95 50 L119 50 L117 60 C116 65 98 65 97 60 Z"/>
-        <path d="M119 52 C126 52 126 60 118 60"/>
-        <ellipse cx="107" cy="66" rx="15" ry="2.6"/>
-        <path d="M100 42 C98 39 102 37 100 34"/>
-        <path d="M108 42 C106 39 110 37 108 34"/>
+    return `<svg class="mark" viewBox="56 26 106 72" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <!-- пара -->
+        <circle cx="82" cy="50" r="7"/>
+        <circle cx="98" cy="54" r="6.5"/>
+        <path d="M65 90 C65 65 75 60 85 62 C90 63 95 70 95 75"/>
+        <path d="M90 75 C95 65 105 65 110 68 C117 72 120 80 120 90"/>
+        <line x1="60" y1="90" x2="125" y2="90"/>
+        <!-- сердечки -->
+        <path d="M98 35 C98 30 91 30 91 35 C91 40 98 44 98 44 C98 44 105 40 105 35 C105 30 98 30 98 35Z" stroke-width="1.5"/>
+        <path d="M112 40 C112 36 107 36 107 40 C107 44 112 47 112 47 C112 47 117 44 117 40 C117 36 112 36 112 40Z" stroke-width="1.5"/>
+        <!-- чашка -->
+        <path d="M135 76 L135 84 C135 90 150 90 150 84 L150 76 Z"/>
+        <path d="M150 78 C156 78 156 83 150 83"/>
+        <path d="M130 90 C130 93 155 93 155 90"/>
+        <path d="M139 71 C137 66 142 63 140 58" stroke-width="1.5"/>
+        <path d="M145 71 C143 66 148 63 146 58" stroke-width="1.5"/>
     </svg>`;
 }
 function cupArt() {
