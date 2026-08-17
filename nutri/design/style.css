@@ -184,7 +184,7 @@ body.in-telegram .close-btn { display: none; }
    БАРИСТА
    ============================================================ */
 .ticket { background: var(--card); border-radius: var(--r); padding: 15px 16px; box-shadow: var(--sh-sm); margin-bottom: 12px; border-left: 4px solid var(--carrot); }
-.ticket[data-status="new"]       { border-left-color: var(--carrot); }
+.ticket[data-status="created"]   { border-left-color: var(--carrot); }
 .ticket[data-status="accepted"]  { border-left-color: var(--amber); }
 .ticket[data-status="preparing"] { border-left-color: var(--amber); }
 .ticket[data-status="ready"]     { border-left-color: var(--green); }

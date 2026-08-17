@@ -11,3 +11,4 @@ coverage/
 *.tsbuildinfo
 apps/api/prisma/*.db
 .pnpm-store/
+server/data/
