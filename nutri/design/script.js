@@ -65,6 +65,9 @@ const IC = {
     pin: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6 7-11a7 7 0 1 0-14 0c0 5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>`,
     crown: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l3 9h10l3-9-5 4-3-6-3 6z"/></svg>`,
     apron: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4a3 3 0 0 0 6 0"/><path d="M8 5C5 6 5 9 7 11l-1 8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l-1-8c2-2 2-5-1-6"/></svg>`,
+    bag: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8h12l-1 12H7z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>`,
+    warn: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17H2.5z"/><path d="M12 10v4M12 17.5h.01"/></svg>`,
+    home: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></svg>`,
 };
 
 // ---------- Меню ----------
@@ -97,17 +100,23 @@ let query = '';
 const cart = {};
 let orderSeq = 4;
 
+// Способ получения: самовывоз или доставка в апартаменты
+let fulfillment = 'pickup';                 // 'pickup' | 'delivery'
+const delivery = { entrance: '', floor: '', apt: '' };
+function setFulfil(mode) { fulfillment = mode; renderCart(); }
+function setDeliveryField(field, val) { delivery[field] = val; }
+
 const clientOrders = [
     { id: 'А-3', date: '14.08, 22:01', items: 'Капучино', total: 220, status: 'done', label: 'Выдан' },
     { id: 'А-2', date: '12.08, 09:14', items: 'Латте · Морковный торт', total: 500, status: 'done', label: 'Выдан' },
 ];
 let baristaOrders = [
-    { id: 'А-7', ts: '09:41', customer: 'Аня',   status: 'new',
+    { id: 'А-7', ts: '09:41', customer: 'Аня',   status: 'new', fulfil: 'delivery', addr: 'Подъезд 2, этаж 5, апарт. 512',
       items: [{ q: 1, n: 'Капучино', m: 'M · растит. молоко' }, { q: 1, n: 'Морковный торт', m: '' }] },
-    { id: 'А-6', ts: '09:37', customer: 'Игорь', status: 'preparing', items: [{ q: 2, n: 'Американо', m: 'L' }] },
-    { id: 'А-5', ts: '09:33', customer: 'Лена',  status: 'ready',
+    { id: 'А-6', ts: '09:37', customer: 'Игорь', status: 'preparing', fulfil: 'pickup', addr: '', items: [{ q: 2, n: 'Американо', m: 'L' }] },
+    { id: 'А-5', ts: '09:33', customer: 'Лена',  status: 'ready', fulfil: 'delivery', addr: 'Подъезд 1, этаж 8, апарт. 803',
       items: [{ q: 1, n: 'Раф ванильный', m: 'M' }, { q: 1, n: 'Круассан', m: '' }] },
-    { id: 'А-4', ts: '09:20', customer: 'Пётр',  status: 'done', items: [{ q: 1, n: 'Эспрессо', m: '' }] },
+    { id: 'А-4', ts: '09:20', customer: 'Пётр',  status: 'done', fulfil: 'pickup', addr: '', items: [{ q: 1, n: 'Эспрессо', m: '' }] },
 ];
 const stopState = {};
 
@@ -296,27 +305,53 @@ function renderCart() {
             </div>
         </div>`;
     }).join('');
+    const deliverySel = fulfillment === 'delivery';
     wrap.innerHTML = `
         <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div></div>
         <span class="eyebrow">Ваш заказ</span>
         <h1 class="page-title">Корзина</h1>
         <div class="cart-list">${rows}</div>
+
+        <div class="fulfil">
+            <button class="seg ${!deliverySel ? 'on' : ''}" onclick="setFulfil('pickup')">${IC.bag} Заберу сам</button>
+            <button class="seg ${deliverySel ? 'on' : ''}" onclick="setFulfil('delivery')">${IC.home} Доставка</button>
+        </div>
+        ${deliverySel ? `
+        <div class="delivery-box">
+            <div class="delivery-warn">${IC.warn}<span>Доставляем <b>только в апартаменты</b> нашего здания. Курьер принесёт заказ прямо к двери.</span></div>
+            <div class="field-grid">
+                <label class="field"><span>Подъезд</span><input inputmode="numeric" value="${delivery.entrance}" oninput="setDeliveryField('entrance',this.value)" placeholder="№"></label>
+                <label class="field"><span>Этаж</span><input inputmode="numeric" value="${delivery.floor}" oninput="setDeliveryField('floor',this.value)" placeholder="№"></label>
+            </div>
+            <label class="field"><span>Номер апартаментов</span><input value="${delivery.apt}" oninput="setDeliveryField('apt',this.value)" placeholder="Напр. 512"></label>
+        </div>` : ''}
+
         <div class="summary">
             <div class="row"><span>Позиции</span><span>${cartCount()} шт.</span></div>
+            <div class="row"><span>Получение</span><span>${deliverySel ? 'Доставка в апартаменты' : 'Самовывоз из кофейни'}</span></div>
             <div class="row"><span>Оплата</span><span>на кассе при получении</span></div>
             <div class="row total"><span>Итого</span><span>${money(cartTotal())}</span></div>
         </div>
-        <div class="checkout"><button class="main-btn" onclick="checkout()">Оформить заказ · ${money(cartTotal())}</button></div>`;
+        <div class="checkout"><button class="main-btn" onclick="checkout()">${deliverySel ? 'Оформить доставку' : 'Оформить заказ'} · ${money(cartTotal())}</button></div>`;
 }
 function checkout() {
     if (!cartCount()) return;
+    if (fulfillment === 'delivery' && (!delivery.entrance.trim() || !delivery.floor.trim() || !delivery.apt.trim())) {
+        toast('Укажите подъезд, этаж и апартаменты');
+        return;
+    }
     const id = 'А-' + orderSeq++;
     const vals = Object.values(cart);
     const total = cartTotal();
-    clientOrders.unshift({ id, date: 'сейчас', items: vals.map((v) => v.name).join(' · '), total, status: 'preparing', label: 'В работе' });
-    baristaOrders.unshift({ id, ts: 'сейчас', customer: 'Вы', status: 'new',
+    const addr = fulfillment === 'delivery'
+        ? `Подъезд ${delivery.entrance}, этаж ${delivery.floor}, апарт. ${delivery.apt}` : '';
+    clientOrders.unshift({ id, date: 'сейчас', items: vals.map((v) => v.name).join(' · '), total,
+        status: 'preparing', label: 'В работе', fulfil: fulfillment, addr });
+    baristaOrders.unshift({ id, ts: 'сейчас', customer: 'Вы', status: 'new', fulfil: fulfillment, addr,
         items: vals.map((v) => ({ q: v.qty, n: v.name, m: v.mods })) });
     Object.keys(cart).forEach((k) => delete cart[k]);
+    // сброс формы доставки
+    fulfillment = 'pickup'; delivery.entrance = delivery.floor = delivery.apt = '';
     updateCartBadge(); renderCart(); renderClientOrders(); renderBarista();
     toast('Заказ ' + id + ' оформлен ✓');
     switchTab('client', 'orders');
@@ -330,6 +365,7 @@ function renderClientOrders() {
                     <span class="order-id">Заказ ${o.id}</span>
                     <span class="order-date">${o.date}</span>
                     <span class="order-items">${o.items}</span>
+                    ${o.fulfil === 'delivery' && o.addr ? `<span class="order-deliv">🛵 ${o.addr}</span>` : ''}
                 </div>
             </div>
             <div class="order-right">
@@ -385,6 +421,9 @@ function ticketHTML(o) {
         <div class="ticket-head">
             <div class="ticket-num">${o.id} <small>${o.customer}</small></div>
             <span class="pill st-${o.status}">${STATUS_LABEL[o.status]}</span>
+        </div>
+        <div class="ticket-deliv ${o.fulfil === 'delivery' ? '' : 'pickup'}">
+            ${o.fulfil === 'delivery' ? IC.home + ' Доставка · ' + o.addr : IC.bag + ' Самовывоз'}
         </div>
         <ul class="ticket-lines">${lines}</ul>
         <div class="ticket-foot">
