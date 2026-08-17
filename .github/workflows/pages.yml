@@ -1,0 +1,46 @@
+name: Deploy Mini App (GitHub Pages)
+
+# Публикует статический прототип мини-приложения «Любовь-Марковь»
+# (папка nutri/design) на GitHub Pages — бесплатный HTTPS-хостинг.
+# Полученную ссылку нужно вставить в @BotFather как Web App URL бота.
+
+on:
+  push:
+    branches:
+      - claude/nutri-bot-framework-o20khl
+    paths:
+      - 'nutri/design/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Разрешаем только один активный деплой Pages
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload mini app
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: nutri/design
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -69,6 +69,8 @@ body {
 }
 
 .close-btn { position: absolute; top: 15px; left: 18px; z-index: 40; background: none; border: none; cursor: pointer; font-family: var(--f-sans); font-size: 14px; font-weight: 700; color: var(--carrot-2); }
+/* Внутри Telegram есть системная кнопка закрытия — свою прячем */
+body.in-telegram .close-btn { display: none; }
 
 /* ---- Роли и экраны ---- */
 .role-app { display: none; flex: 1; min-height: 0; flex-direction: column; }

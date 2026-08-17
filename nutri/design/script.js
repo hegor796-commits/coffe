@@ -503,9 +503,29 @@ function toast(msg) {
 }
 
 // ============================================================
+//  Интеграция с Telegram Mini App
+// ============================================================
+const tg = window.Telegram && window.Telegram.WebApp;
+function initTelegram() {
+    if (!tg) return;                 // открыто вне Telegram — работает как обычная страница
+    try {
+        tg.ready();
+        tg.expand();                 // развернуть на весь экран
+        if (tg.setBackgroundColor) tg.setBackgroundColor('#FBF6EE');
+        if (tg.setHeaderColor) tg.setHeaderColor('#FBF6EE');
+        document.body.classList.add('in-telegram');
+    } catch (e) { /* старые версии клиента — не критично */ }
+}
+function closeApp() {
+    if (tg && tg.close) tg.close();
+    else toast('Демо: закрытие мини-приложения');
+}
+
+// ============================================================
 //  Инициализация
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
+    initTelegram();
     document.getElementById('logo-mark').innerHTML = logoMark();
     renderMenu(); renderCart(); renderClientOrders();
     renderBarista(); renderStopList(); renderOwnerMenu();
