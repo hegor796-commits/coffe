@@ -145,6 +145,13 @@ function switchTab(role, tab) {
     app.querySelector('#view-' + role + '-' + tab).classList.add('active');
     app.querySelectorAll('.tab').forEach((n) => n.classList.remove('active'));
     app.querySelector('#tab-' + role + '-' + tab).classList.add('active');
+    // Всегда перерисовываем открываемую вкладку — чтобы данные были свежими
+    if (role === 'client' && tab === 'cart') renderCart();
+    else if (role === 'client' && tab === 'orders') renderClientOrders();
+    else if (role === 'barista' && (tab === 'feed' || tab === 'archive')) renderBarista();
+    else if (role === 'barista' && tab === 'stop') renderStopList();
+    else if (role === 'owner' && tab === 'menu') renderOwnerMenu();
+    else if (role === 'client' && tab === 'menu') renderMenu();
 }
 
 // ============================================================
@@ -250,8 +257,7 @@ function addConfigured() {
 // ============================================================
 function addSimple(id) {
     const p = PRODUCTS.find((x) => x.id === id);
-    addLine(id, hasMods(p) ? 1 : 0, 0, 1);
-    updateCartBadge();
+    addLine(id, 0, 0, 1);            // базовый размер (S) — цена как на карточке
     toast(p.name + ' — в корзине');
 }
 function addLine(id, size, milk, qty) {
@@ -260,6 +266,7 @@ function addLine(id, size, milk, qty) {
     if (cart[key]) cart[key].qty += qty;
     else cart[key] = { id, name: p.name, mods: modsText(p, size, milk), unit: unitPrice(p, size, milk), qty };
     updateCartBadge();
+    renderCart();          // корзина всегда актуальна сразу после добавления
 }
 function changeQty(key, d) {
     if (!cart[key]) return;
@@ -348,7 +355,7 @@ function checkout() {
     clientOrders.unshift({ id, date: 'сейчас', items: vals.map((v) => v.name).join(' · '), total,
         status: 'preparing', label: 'В работе', fulfil: fulfillment, addr });
     baristaOrders.unshift({ id, ts: 'сейчас', customer: 'Вы', status: 'new', fulfil: fulfillment, addr,
-        items: vals.map((v) => ({ q: v.qty, n: v.name, m: v.mods })) });
+        items: vals.map((v) => ({ q: v.qty, n: v.name, m: v.mods, unit: v.unit })) });
     Object.keys(cart).forEach((k) => delete cart[k]);
     // сброс формы доставки
     fulfillment = 'pickup'; delivery.entrance = delivery.floor = delivery.apt = '';
@@ -407,7 +414,10 @@ function renderBarista() {
 }
 function ticketHTML(o) {
     const lines = o.items.map((it) => `<li><span class="ln-qty">${it.q}×</span>${it.n}${it.m ? ` <span class="ln-mods">· ${it.m}</span>` : ''}</li>`).join('');
-    const total = o.items.reduce((s, it) => { const p = PRODUCTS.find((x) => x.name === it.n); return s + (p ? p.price : 0) * it.q; }, 0);
+    const total = o.items.reduce((s, it) => {
+        const unit = it.unit != null ? it.unit : ((PRODUCTS.find((x) => x.name === it.n) || {}).price || 0);
+        return s + unit * it.q;
+    }, 0);
     const flow = FLOW[o.status];
     let actions = '';
     if (o.status === 'new') {
