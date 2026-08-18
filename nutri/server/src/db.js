@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS products (
   category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
   name        TEXT NOT NULL,
   price_rub   INTEGER NOT NULL,
+  photo_url   TEXT,
   sort        INTEGER NOT NULL DEFAULT 0,
   available   INTEGER NOT NULL DEFAULT 1
 );
@@ -110,6 +111,9 @@ CREATE TABLE IF NOT EXISTS counters (
   order_seq INTEGER NOT NULL DEFAULT 0
 );
 `);
+
+// Добавляем photo_url к существующим БД (идемпотентно).
+try { db.exec('ALTER TABLE products ADD COLUMN photo_url TEXT'); } catch {}
 
 export function now() {
   return Date.now();

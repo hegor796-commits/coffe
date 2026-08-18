@@ -39,7 +39,7 @@ export function buildMenu(tenantId) {
   const categories = db.prepare('SELECT id, name, sort FROM categories WHERE tenant_id = ? ORDER BY sort')
     .all(tenantId);
   const products = db.prepare(
-    'SELECT id, category_id, name, price_rub, sort, available FROM products WHERE tenant_id = ? ORDER BY sort',
+    'SELECT id, category_id, name, price_rub, photo_url, sort, available FROM products WHERE tenant_id = ? ORDER BY sort',
   ).all(tenantId);
   const pmg = db.prepare('SELECT product_id, group_id, sort FROM product_modifier_groups').all();
   const groups = db.prepare('SELECT id, name, required, min_select, max_select FROM modifier_groups WHERE tenant_id = ?')
@@ -62,6 +62,7 @@ export function buildMenu(tenantId) {
     categoryId: p.category_id,
     name: p.name,
     price: p.price_rub,
+    photoUrl: p.photo_url || null,
     available: !!p.available,
     groups: pmg.filter((x) => x.product_id === p.id).sort((a, b) => a.sort - b.sort)
       .map((x) => groupsById.get(x.group_id)).filter(Boolean),

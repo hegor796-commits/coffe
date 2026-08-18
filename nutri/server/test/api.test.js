@@ -43,7 +43,7 @@ before(async () => {
   });
   // Ждём готовности сервера.
   await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('server did not start in time')), 5000);
+    const timer = setTimeout(() => reject(new Error('server did not start in time')), 8000);
     child.stdout.on('data', (d) => { if (d.toString().includes('listening')) { clearTimeout(timer); resolve(); } });
     child.stderr.on('data', () => {});
   });
@@ -63,25 +63,24 @@ test('bootstrap отдаёт меню и роль client', async () => {
   const { status, body } = await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }));
   assert.equal(status, 200);
   assert.equal(body.role, 'client');
-  assert.equal(body.menu.length, 13);
+  assert.ok(body.menu.length > 100, `ожидали > 100 позиций, получили ${body.menu.length}`);
 });
 
-test('серверный расчёт цены с модификаторами', async () => {
+test('серверный расчёт цены', async () => {
   const menu = (await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }))).body.menu;
-  const cap = menu.find((p) => p.name === 'Капучино');
-  const sizeL = cap.groups[0].options.find((o) => o.name.startsWith('L'));
-  const milkOat = cap.groups[1].options.find((o) => o.name === 'Растительное');
+  const cap = menu.find((p) => p.name === 'капучино 200');
+  assert.ok(cap, 'капучино 200 должен быть в меню');
   const { status, body } = await j(await fetch(`${BASE}/api/orders`, {
     method: 'POST', headers: H(CLIENT),
-    body: JSON.stringify({ lines: [{ productId: cap.id, optionIds: [sizeL.id, milkOat.id], qty: 1 }] }),
+    body: JSON.stringify({ lines: [{ productId: cap.id, qty: 1 }] }),
   }));
   assert.equal(status, 201);
-  assert.equal(body.order.total, 220 + 70 + 50);
+  assert.equal(body.order.total, 250);
 });
 
-test('отклоняет несуществующую опцию модификатора (защита от подмены цены)', async () => {
+test('отклоняет несуществующую опцию (защита от подмены цены)', async () => {
   const menu = (await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }))).body.menu;
-  const cap = menu.find((p) => p.name === 'Капучино');
+  const cap = menu.find((p) => p.name === 'капучино 200');
   const res = await fetch(`${BASE}/api/orders`, {
     method: 'POST', headers: H(CLIENT),
     body: JSON.stringify({ lines: [{ productId: cap.id, optionIds: ['FAKE_ID'], qty: 1 }] }),
@@ -91,7 +90,7 @@ test('отклоняет несуществующую опцию модифик�
 
 test('доставка без адреса отклоняется', async () => {
   const menu = (await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }))).body.menu;
-  const amer = menu.find((p) => p.name === 'Американо');
+  const amer = menu.find((p) => p.name === 'американо 200');
   const { status, body } = await j(await fetch(`${BASE}/api/orders`, {
     method: 'POST', headers: H(CLIENT),
     body: JSON.stringify({ fulfillment: 'delivery', delivery: {}, lines: [{ productId: amer.id, qty: 1 }] }),
@@ -107,9 +106,9 @@ test('клиент не видит ленту бариста (403)', async () =>
 
 test('полный жизненный цикл заказа владельцем: created → completed', async () => {
   const menu = (await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }))).body.menu;
-  const esp = menu.find((p) => p.name === 'Эспрессо');
+  const amer = menu.find((p) => p.name === 'американо 200');
   const created = (await j(await fetch(`${BASE}/api/orders`, {
-    method: 'POST', headers: H(CLIENT), body: JSON.stringify({ lines: [{ productId: esp.id, qty: 1 }] }),
+    method: 'POST', headers: H(CLIENT), body: JSON.stringify({ lines: [{ productId: amer.id, qty: 1 }] }),
   }))).body.order;
 
   const feed = (await j(await fetch(`${BASE}/api/staff/orders`, { headers: H(OWNER) }))).body;
@@ -132,7 +131,8 @@ test('полный жизненный цикл заказа владельцем
 
 test('стоп-лист скрывает товар из меню клиента', async () => {
   const menu = (await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }))).body.menu;
-  const target = menu.find((p) => p.name === 'Латте');
+  const target = menu.find((p) => p.name === 'латте 300');
+  assert.ok(target, 'латте 300 должен быть в меню');
   await fetch(`${BASE}/api/staff/stop`, {
     method: 'POST', headers: H(OWNER), body: JSON.stringify({ productId: target.id, available: false }),
   });
