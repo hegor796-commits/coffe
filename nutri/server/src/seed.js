@@ -255,18 +255,23 @@ const PRODUCTS = [
 
 export function seedDemo() {
   const slug = 'lubov';
-  const existing = db.prepare('SELECT id FROM tenants WHERE slug = ?').get(slug);
-  if (existing) return existing.id;
-
   const botToken = process.env.DEMO_BOT_TOKEN || '';
+  const existing = db.prepare('SELECT id FROM tenants WHERE slug = ?').get(slug);
+  if (existing) {
+    // Обновляем токен при каждом старте — актуально после Revoke в BotFather.
+    if (botToken) db.prepare('UPDATE tenants SET bot_token = ? WHERE slug = ?').run(botToken, slug);
+    return existing.id;
+  }
+
   const ownerTg = process.env.SEED_OWNER_TG_ID || '';
   const baristaTg = process.env.SEED_BARISTA_TG_ID || '';
 
+  const newBotToken = process.env.DEMO_BOT_TOKEN || '';
   const tenantId = uid();
   db.prepare(
     `INSERT INTO tenants (id, slug, name, bot_token, webhook_secret, payment_mode, created_at)
      VALUES (?, ?, ?, ?, ?, 'offline', ?)`,
-  ).run(tenantId, slug, 'Любовь-Марковь', botToken, crypto.randomBytes(16).toString('hex'), now());
+  ).run(tenantId, slug, 'Любовь-Марковь', newBotToken, crypto.randomBytes(16).toString('hex'), now());
 
   if (ownerTg) {
     db.prepare('INSERT INTO staff (id, tenant_id, tg_user_id, role, name) VALUES (?,?,?,?,?)')
