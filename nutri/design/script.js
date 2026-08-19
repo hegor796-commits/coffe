@@ -785,7 +785,9 @@ async function boot() {
         CATEGORIES_LIST = [...new Set(MENU.map((p) => p.categoryName))];
     }
 
-    renderCategories(); renderMenu(); renderStopList(); renderOwnerMenu(); updateCartBadge(); renderCart();
+    // Рендерим только клиентское меню. Стоп-лист и меню владельца строятся
+    // лениво при открытии своих вкладок (switchTab) — не грузим старт зря.
+    renderCategories(); renderMenu(); updateCartBadge(); renderCart();
 
     if (LIVE) {
         const switcher = document.querySelector('.preview-controls');
@@ -800,6 +802,7 @@ async function boot() {
                 // мини-переключатель «Бариста / Владелец» (без «Клиент»).
                 switcher?.querySelector('#rs-client')?.remove();
                 switchRole('owner');
+                loadOwnerSummary(); loadOwnerTeam();   // сразу подтягиваем реальные цифры
             } else {
                 switcher?.remove();
                 switchRole('barista');
