@@ -8,6 +8,7 @@ COPY src ./src
 # Данные (SQLite) — на смонтированный Volume. На Railway смонтируйте Volume на /data.
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
-EXPOSE 3000
+# PORT задаётся Railway через env (обычно 8080), EXPOSE не нужен.
+EXPOSE 8080
 
 CMD ["node", "src/server.js"]
