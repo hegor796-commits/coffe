@@ -92,7 +92,22 @@ async function api(path, method, body) {
 // ============================================================
 //  Меню: демо-данные (превью вне Telegram) + генерик-модификаторы
 // ============================================================
-const CAT_ICON = { 'Кофе': 'coffee', 'Спешлти': 'special', 'Десерты': 'dessert' };
+// Любая категория из бэкенда сводится к одному из трёх визуальных
+// стилей карточки (цвет-градиент + иконка) по ключевым словам названия.
+function catKeyFor(name) {
+    const n = (name || '').toLowerCase();
+    if (/десерт|вафл|сладк|чизкейк|пирож/.test(n)) return 'dessert';
+    if (/спешл|не кофе|чай|напит|еда|лимонад|смузи/.test(n)) return 'special';
+    return 'coffee';   // кофе, авторский кофе, холодный кофе и пр.
+}
+// Иконки для чипов-категорий (по визуальному стилю).
+const CAT_CHIP_ICON = {
+    all: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h11M19 8h1M4 16h5M13 16h7"/><circle cx="16" cy="8" r="2.4"/><circle cx="10" cy="16" r="2.4"/></svg>`,
+    coffee: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 8h11v5a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5z"/><path d="M16 9h2a2.5 2.5 0 0 1 0 5h-2"/><path d="M8 3v2M12 3v2"/></svg>`,
+    special: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20C4 11 11 4 20 4c0 9-7 16-16 16z"/><path d="M9 15c3-3 6-4 8-4"/></svg>`,
+    dessert: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20h16v-7a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3z"/><path d="M4 15c2 1.5 3 1.5 5 0s3-1.5 5 0 3 1.5 6 0"/><path d="M12 4v3"/></svg>`,
+};
+let CATEGORIES_LIST = [];   // упорядоченные названия категорий, присутствующих в меню
 
 // Группы модификаторов для напитков в демо-режиме — по той же форме,
 // что отдаёт бэкенд (groups[].options[]), чтобы шторка товара была одна на оба режима.
@@ -109,16 +124,24 @@ const GROUPS_DRINK = [
     ] },
 ];
 const DEMO_SEED = [
-    ['Капучино', 220, 'Кофе', true], ['Латте', 240, 'Кофе', true], ['Американо', 180, 'Кофе', true],
-    ['Флэт-уайт', 260, 'Кофе', true], ['Раф ванильный', 280, 'Кофе', true], ['Эспрессо', 130, 'Кофе', true],
-    ['Матча-латте', 320, 'Спешлти', true], ['Фильтр V60', 260, 'Спешлти', true], ['Бамбл', 290, 'Спешлти', true],
-    ['Какао', 240, 'Спешлти', true], ['Морковный торт', 260, 'Десерты', false],
-    ['Чизкейк', 290, 'Десерты', false], ['Круассан', 180, 'Десерты', false],
+    ['Капучино', 220, 'Кофе', true, 'Эспрессо с бархатистой молочной пеной.'],
+    ['Латте', 240, 'Кофе', true, 'Много молока, немного эспрессо — нежный вкус.'],
+    ['Американо', 180, 'Кофе', true, 'Классический чёрный кофе. Насыщенный и бодрящий.'],
+    ['Флэт-уайт', 260, 'Кофе', true, 'Двойной эспрессо с тонким слоем молока.'],
+    ['Раф ванильный', 280, 'Кофе', true, 'Эспрессо со сливками и ванилью.'],
+    ['Эспрессо', 130, 'Кофе', true, 'Концентрированный кофе, основа всех напитков.'],
+    ['Матча-латте', 320, 'Спешлти', true, 'Японская матча с молоком.'],
+    ['Фильтр V60', 260, 'Спешлти', true, 'Альтернативная заварка, раскрывает вкус зерна.'],
+    ['Бамбл', 290, 'Спешлти', true, 'Эспрессо на апельсиновом соке со льдом.'],
+    ['Какао', 240, 'Спешлти', true, 'Горячее какао на молоке.'],
+    ['Морковный торт', 260, 'Десерты', false, 'Влажный бисквит со специями и кремом.'],
+    ['Чизкейк', 290, 'Десерты', false, 'Нежный сливочный чизкейк.'],
+    ['Круассан', 180, 'Десерты', false, 'Свежая слоёная выпечка.'],
 ];
 function demoProducts() {
-    return DEMO_SEED.map(([name, price, categoryName, hasGroups], i) => ({
-        id: 'demo-' + i, name, price, available: true, categoryName,
-        catKey: CAT_ICON[categoryName] || 'coffee',
+    return DEMO_SEED.map(([name, price, categoryName, hasGroups, description], i) => ({
+        id: 'demo-' + i, name, price, available: true, categoryName, description,
+        catKey: catKeyFor(categoryName),
         groups: hasGroups ? GROUPS_DRINK : [],
     }));
 }
@@ -207,20 +230,37 @@ function switchTab(role, tab) {
 // ============================================================
 //  Клиент: меню
 // ============================================================
-function renderMenu() {
+// Собираем ленту категорий из реального меню (а не хардкод 4 штук).
+function renderCategories() {
+    const wrap = document.getElementById('categories');
+    if (!wrap) return;
+    const chips = [`<button class="cat-btn ${activeCat === 'all' ? 'active' : ''}" onclick="setCat(this,'all')">${CAT_CHIP_ICON.all}Всё</button>`];
+    for (const name of CATEGORIES_LIST) {
+        const k = catKeyFor(name);
+        const safe = name.replace(/'/g, '&#39;');
+        chips.push(`<button class="cat-btn ${activeCat === name ? 'active' : ''}" onclick="setCat(this,'${safe}')">${CAT_CHIP_ICON[k]}${name}</button>`);
+    }
+    wrap.innerHTML = chips.join('');
+}
+
+function renderMenu(opts) {
+    const stagger = !opts || opts.stagger !== false;
     const grid = document.getElementById('menu-grid');
     const q = query.trim().toLowerCase();
     const items = MENU.filter((p) =>
         (activeCat === 'all' || p.categoryName === activeCat) && (!q || p.name.toLowerCase().includes(q)));
     if (!items.length) { grid.innerHTML = '<div class="empty-note" style="grid-column:1/-1">Ничего не найдено</div>'; return; }
-    grid.innerHTML = items.map((p) => {
+    grid.innerHTML = items.map((p, i) => {
         const out = !p.available;
         const open = out ? '' : `onclick="openSheet('${p.id}')"`;
+        const enter = stagger ? `card-enter" style="animation-delay:${Math.min(i * 0.03, 0.4)}s` : '';
+        const desc = p.description ? `<p class="card-desc">${p.description}</p>` : '';
         return `
-        <article class="menu-card ${out ? 'sold-out' : ''}">
+        <article class="menu-card ${out ? 'sold-out' : ''} ${enter}">
             <div class="card-img cat-${p.catKey}" ${open}>${cupArt()}</div>
             <div class="card-body" ${open}>
                 <h2 class="card-title">${p.name}</h2>
+                ${desc}
                 <span class="card-price">${money(p.price)}</span>
                 ${out ? '<span class="card-soldout">Стоп</span>'
                       : `<button class="add-btn" onclick="event.stopPropagation();addSimple('${p.id}')" aria-label="Добавить ${p.name}">+</button>`}
@@ -232,9 +272,15 @@ function setCat(btn, catName) {
     activeCat = catName;
     btn.parentElement.querySelectorAll('.cat-btn').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
-    renderMenu();
+    renderMenu({ stagger: true });
 }
-function setSearch(v) { query = v; renderMenu(); }
+let searchTimer;
+function setSearch(v) {
+    query = v;
+    clearTimeout(searchTimer);
+    // Дебаунс: не перестраиваем всю сетку на каждое нажатие — иначе лагает.
+    searchTimer = setTimeout(() => renderMenu({ stagger: false }), 110);
+}
 
 // ============================================================
 //  Клиент: карточка товара (нижняя шторка с модификаторами)
@@ -298,6 +344,7 @@ function renderSheet() {
                 <div><div class="sheet-name">${product.name}</div><div class="sheet-base">${money(product.price)} · базовая</div></div>
                 <button class="sheet-x" onclick="closeSheet()" aria-label="Закрыть">✕</button>
             </div>
+            ${product.description ? `<p class="sheet-desc">${product.description}</p>` : ''}
             ${product.groups.length ? product.groups.map((g) => `
             <div class="opt-group"><div class="opt-label">${g.name}</div><div class="opts">${chips(g)}</div></div>`).join('')
             : '<div class="opt-note">Без дополнительных опций</div>'}
@@ -348,10 +395,17 @@ function changeQty(key, d) {
 }
 function cartCount() { return Object.values(cart).reduce((s, v) => s + v.qty, 0); }
 function cartTotal() { return Object.values(cart).reduce((s, v) => s + v.unit * v.qty, 0); }
+let lastCartCount = 0;
 function updateCartBadge() {
     const b = document.getElementById('cart-badge');
     const n = cartCount();
     b.textContent = n; b.classList.toggle('show', n > 0);
+    if (n > lastCartCount) {
+        b.classList.remove('bump');
+        void b.offsetWidth;   // рестарт анимации
+        b.classList.add('bump');
+    }
+    lastCartCount = n;
 }
 function renderCart() {
     const wrap = document.getElementById('view-client-cart');
@@ -709,21 +763,29 @@ async function boot() {
         if (r.ok) {
             LIVE = true; ROLE = r.data.role;
             const catNameById = new Map(r.data.categories.map((c) => [c.id, c.name]));
-            MENU = r.data.menu.map((p) => ({
-                id: p.id, name: p.name, price: p.price, available: p.available,
-                categoryName: catNameById.get(p.categoryId) || '',
-                catKey: CAT_ICON[catNameById.get(p.categoryId)] || 'coffee',
-                groups: p.groups || [],
-            }));
+            // Порядок категорий — как в бэкенде; в ленту попадают только непустые.
+            const menuCatIds = new Set(r.data.menu.map((p) => p.categoryId));
+            CATEGORIES_LIST = r.data.categories.filter((c) => menuCatIds.has(c.id)).map((c) => c.name);
+            MENU = r.data.menu.map((p) => {
+                const categoryName = catNameById.get(p.categoryId) || '';
+                return {
+                    id: p.id, name: p.name, price: p.price, available: p.available,
+                    description: p.description || '',
+                    categoryName,
+                    catKey: catKeyFor(categoryName),
+                    groups: p.groups || [],
+                };
+            });
         } else {
             showAuthError(r);
             return;
         }
     } else {
         MENU = demoProducts();
+        CATEGORIES_LIST = [...new Set(MENU.map((p) => p.categoryName))];
     }
 
-    renderMenu(); renderStopList(); renderOwnerMenu(); updateCartBadge(); renderCart();
+    renderCategories(); renderMenu(); renderStopList(); renderOwnerMenu(); updateCartBadge(); renderCart();
 
     if (LIVE) {
         const switcher = document.querySelector('.preview-controls');

@@ -64,6 +64,8 @@ test('bootstrap отдаёт меню и роль client', async () => {
   assert.equal(status, 200);
   assert.equal(body.role, 'client');
   assert.ok(body.menu.length > 50, `ожидали > 50 позиций, получили ${body.menu.length}`);
+  const cap = body.menu.find((p) => p.name === 'Капучино');
+  assert.ok(cap && typeof cap.description === 'string' && cap.description.length > 0, 'у Капучино должно быть описание');
 });
 
 test('серверный расчёт цены — капучино с кокосовым молоком', async () => {

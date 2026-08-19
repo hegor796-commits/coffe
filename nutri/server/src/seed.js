@@ -35,11 +35,11 @@ function insertGroup(tenantId, name, required, minSelect, maxSelect, options) {
   return gid;
 }
 
-function insertProduct(tenantId, catId, name, price, sort, groupIds = []) {
+function insertProduct(tenantId, catId, name, price, sort, groupIds = [], description = '') {
   const pid = uid();
   db.prepare(
-    'INSERT INTO products (id, tenant_id, category_id, name, price_rub, sort) VALUES (?,?,?,?,?,?)',
-  ).run(pid, tenantId, catId, name, price, sort);
+    'INSERT INTO products (id, tenant_id, category_id, name, description, price_rub, sort) VALUES (?,?,?,?,?,?,?)',
+  ).run(pid, tenantId, catId, name, description || null, price, sort);
   groupIds.forEach((gid, i) => {
     db.prepare('INSERT INTO product_modifier_groups (product_id, group_id, sort) VALUES (?,?,?)').run(pid, gid, i);
   });
@@ -158,46 +158,78 @@ export function seedDemo() {
   let s = 0;
 
   // === Кофе ===
-  insertProduct(tenantId, catIds['кофе'], 'Американо', 220, s++, MA(volAmer));
-  insertProduct(tenantId, catIds['кофе'], 'Капучино', 250, s++, MA(volCap));
-  insertProduct(tenantId, catIds['кофе'], 'Латте', 290, s++, MA(volLatte));
-  insertProduct(tenantId, catIds['кофе'], 'Воронка V60', 310, s++, [milkGid, addonsGid]);
-  insertProduct(tenantId, catIds['кофе'], 'Раф', 340, s++, MA(volRaf));
-  insertProduct(tenantId, catIds['кофе'], 'Флэт уайт', 270, s++, MA(volFW));
-  insertProduct(tenantId, catIds['кофе'], 'Флэт уайт хвойный 300мл', 380, s++, [milkGid, addonsGid]);
-  insertProduct(tenantId, catIds['кофе'], 'Какао (без сахара)', 300, s++, MA(volSm));
-  insertProduct(tenantId, catIds['кофе'], 'Матча-латте', 350, s++, MA(volSm));
+  insertProduct(tenantId, catIds['кофе'], 'Американо', 220, s++, MA(volAmer),
+    'Классический чёрный кофе на эспрессо и горячей воде. Насыщенный, бодрящий.');
+  insertProduct(tenantId, catIds['кофе'], 'Капучино', 250, s++, MA(volCap),
+    'Эспрессо с бархатистой молочной пеной. Сбалансированный и мягкий.');
+  insertProduct(tenantId, catIds['кофе'], 'Латте', 290, s++, MA(volLatte),
+    'Много молока, немного эспрессо — нежный и кремовый вкус.');
+  insertProduct(tenantId, catIds['кофе'], 'Воронка V60', 310, s++, [milkGid, addonsGid],
+    'Альтернативный фильтр-кофе ручной заварки. Раскрывает вкус зерна.');
+  insertProduct(tenantId, catIds['кофе'], 'Раф', 340, s++, MA(volRaf),
+    'Эспрессо, сливки и ваниль, взбитые вместе. Десертный и обволакивающий.');
+  insertProduct(tenantId, catIds['кофе'], 'Флэт уайт', 270, s++, MA(volFW),
+    'Двойной эспрессо с тонким слоем молока. Плотный кофейный вкус.');
+  insertProduct(tenantId, catIds['кофе'], 'Флэт уайт хвойный 300мл', 380, s++, [milkGid, addonsGid],
+    'Флэт уайт с хвойным сиропом — неожиданный лесной акцент.');
+  insertProduct(tenantId, catIds['кофе'], 'Какао (без сахара)', 300, s++, MA(volSm),
+    'Горячее какао на молоке без добавленного сахара.');
+  insertProduct(tenantId, catIds['кофе'], 'Матча-латте', 350, s++, MA(volSm),
+    'Японская матча с молоком. Выбор цвета: зелёная, голубая или розовая.');
 
   // === Авторский кофе ===
-  insertProduct(tenantId, catIds['авторский кофе'], 'Латте морковный', 395, s++, MA(volLM));
-  insertProduct(tenantId, catIds['авторский кофе'], 'Латте халва', 395, s++, MA(volLM));
-  insertProduct(tenantId, catIds['авторский кофе'], 'Раф арахис', 395, s++, MA(volRP));
-  insertProduct(tenantId, catIds['авторский кофе'], 'Раф баунти', 395, s++, MA(volRP));
-  insertProduct(tenantId, catIds['авторский кофе'], 'Раф кедровый', 395, s++, MA(volRP));
-  insertProduct(tenantId, catIds['авторский кофе'], 'Раф грецкий', 395, s++, MA(volRP));
+  insertProduct(tenantId, catIds['авторский кофе'], 'Латте морковный', 395, s++, MA(volLM),
+    'Фирменный латте со вкусом морковного пирога и специй.');
+  insertProduct(tenantId, catIds['авторский кофе'], 'Латте халва', 395, s++, MA(volLM),
+    'Латте с нотами восточной халвы и подсолнечника.');
+  insertProduct(tenantId, catIds['авторский кофе'], 'Раф арахис', 395, s++, MA(volRP),
+    'Кремовый раф с насыщенным арахисовым вкусом.');
+  insertProduct(tenantId, catIds['авторский кофе'], 'Раф баунти', 395, s++, MA(volRP),
+    'Раф с кокосом и шоколадом — как любимый батончик.');
+  insertProduct(tenantId, catIds['авторский кофе'], 'Раф кедровый', 395, s++, MA(volRP),
+    'Раф со сливочным вкусом кедрового ореха.');
+  insertProduct(tenantId, catIds['авторский кофе'], 'Раф грецкий', 395, s++, MA(volRP),
+    'Раф с ароматом грецкого ореха.');
 
   // === Холодный кофе ===
-  insertProduct(tenantId, catIds['холодный кофе'], 'Айс-капучино', 360, s++, [milkGid, addonsGid]);
-  insertProduct(tenantId, catIds['холодный кофе'], 'Айс-латте', 350, s++, [milkGid, addonsGid]);
-  insertProduct(tenantId, catIds['холодный кофе'], 'Клубничный айс-латте', 450, s++, [milkGid, addonsGid]);
-  insertProduct(tenantId, catIds['холодный кофе'], 'Бамбл апельсиновый', 380, s++, [addonsGid]);
-  insertProduct(tenantId, catIds['холодный кофе'], 'Бамбл гранатовый', 380, s++, [addonsGid]);
-  insertProduct(tenantId, catIds['холодный кофе'], 'Бамбл апероль', 380, s++, [addonsGid]);
-  insertProduct(tenantId, catIds['холодный кофе'], 'Бамбл фреш', 490, s++, [addonsGid]);
-  insertProduct(tenantId, catIds['холодный кофе'], 'Эспрессо тоник 250мл', 320, s++, [addonsGid]);
-  insertProduct(tenantId, catIds['холодный кофе'], 'Матча тоник 250мл', 320, s++, [addonsGid]);
-  insertProduct(tenantId, catIds['холодный кофе'], 'Айс матча-латте', 350, s++, MA(volSm));
-  insertProduct(tenantId, catIds['холодный кофе'], 'Банановый матча-латте', 450, s++, [milkGid, addonsGid]);
-  insertProduct(tenantId, catIds['холодный кофе'], 'Мятный фраппе', 420, s++, [milkGid, addonsGid]);
+  insertProduct(tenantId, catIds['холодный кофе'], 'Айс-капучино', 360, s++, [milkGid, addonsGid],
+    'Капучино со льдом — освежающий и бодрящий.');
+  insertProduct(tenantId, catIds['холодный кофе'], 'Айс-латте', 350, s++, [milkGid, addonsGid],
+    'Латте со льдом. Нежный молочный вкус в жару.');
+  insertProduct(tenantId, catIds['холодный кофе'], 'Клубничный айс-латте', 450, s++, [milkGid, addonsGid],
+    'Айс-латте с клубничным пюре. Летний и ягодный.');
+  insertProduct(tenantId, catIds['холодный кофе'], 'Бамбл апельсиновый', 380, s++, [addonsGid],
+    'Эспрессо на свежем апельсиновом соке со льдом.');
+  insertProduct(tenantId, catIds['холодный кофе'], 'Бамбл гранатовый', 380, s++, [addonsGid],
+    'Эспрессо с гранатовым соком и льдом.');
+  insertProduct(tenantId, catIds['холодный кофе'], 'Бамбл апероль', 380, s++, [addonsGid],
+    'Освежающий бамбл с апероль-акцентом (безалкогольный).');
+  insertProduct(tenantId, catIds['холодный кофе'], 'Бамбл фреш', 490, s++, [addonsGid],
+    'Бамбл на свежевыжатом соке. Двойная порция бодрости.');
+  insertProduct(tenantId, catIds['холодный кофе'], 'Эспрессо тоник 250мл', 320, s++, [addonsGid],
+    'Эспрессо с тоником и льдом. Игристый и освежающий.');
+  insertProduct(tenantId, catIds['холодный кофе'], 'Матча тоник 250мл', 320, s++, [addonsGid],
+    'Матча с тоником и льдом.');
+  insertProduct(tenantId, catIds['холодный кофе'], 'Айс матча-латте', 350, s++, MA(volSm),
+    'Матча-латте со льдом. Выбор цвета: зелёная, голубая или розовая.');
+  insertProduct(tenantId, catIds['холодный кофе'], 'Банановый матча-латте', 450, s++, [milkGid, addonsGid],
+    'Матча-латте с бананом. Мягкий и питательный.');
+  insertProduct(tenantId, catIds['холодный кофе'], 'Мятный фраппе', 420, s++, [milkGid, addonsGid],
+    'Взбитый холодный кофе со свежей мятой.');
 
   // === Спешлти ===
-  insertProduct(tenantId, catIds['спешелти'], 'Раф Muscovado 300мл', 395, s++, [milkGid, addonsGid]);
-  insertProduct(tenantId, catIds['спешелти'], 'Коктейль «Беллини» шампанское б/а персиковое пюре', 450, s++, []);
-  insertProduct(tenantId, catIds['спешелти'], 'Айс-фьюри с урбечем', 450, s++, []);
+  insertProduct(tenantId, catIds['спешелти'], 'Раф Muscovado 300мл', 395, s++, [milkGid, addonsGid],
+    'Раф на тростниковом сахаре мусковадо с карамельными нотами.');
+  insertProduct(tenantId, catIds['спешелти'], 'Коктейль «Беллини» шампанское б/а персиковое пюре', 450, s++, [],
+    'Безалкогольный игристый коктейль с персиковым пюре.');
+  insertProduct(tenantId, catIds['спешелти'], 'Айс-фьюри с урбечем', 450, s++, [],
+    'Холодный авторский напиток с урбечем.');
 
   // === Не кофе ===
-  insertProduct(tenantId, catIds['не кофе'], 'Горячий шоколад 300мл', 360, s++, [addonsGid]);
-  insertProduct(tenantId, catIds['не кофе'], 'Бабл-ти кокосовое молоко 0,5л', 380, s++, [addonsGid]);
+  insertProduct(tenantId, catIds['не кофе'], 'Горячий шоколад 300мл', 360, s++, [addonsGid],
+    'Густой горячий шоколад на молоке.');
+  insertProduct(tenantId, catIds['не кофе'], 'Бабл-ти кокосовое молоко 0,5л', 380, s++, [addonsGid],
+    'Чай на кокосовом молоке с тапиокой и сиропом на выбор.');
 
   // === Чай ===
   insertProduct(tenantId, catIds['чай'], 'Чай чёрный 400мл', 190, s++, []);

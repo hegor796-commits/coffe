@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS products (
   tenant_id   TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
   name        TEXT NOT NULL,
+  description TEXT,
   price_rub   INTEGER NOT NULL,
   photo_url   TEXT,
   sort        INTEGER NOT NULL DEFAULT 0,
@@ -112,8 +113,9 @@ CREATE TABLE IF NOT EXISTS counters (
 );
 `);
 
-// Добавляем photo_url к существующим БД (идемпотентно).
+// Мягкие миграции для существующих БД (идемпотентно).
 try { db.exec('ALTER TABLE products ADD COLUMN photo_url TEXT'); } catch {}
+try { db.exec('ALTER TABLE products ADD COLUMN description TEXT'); } catch {}
 
 export function now() {
   return Date.now();
