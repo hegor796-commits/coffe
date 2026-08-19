@@ -759,7 +759,8 @@ function showAuthError(r) {
 
 async function boot() {
     initTelegramShell();
-    document.getElementById('logo-mark').innerHTML = logoMark();
+    const logoMarkEl = document.getElementById('logo-mark');
+    if (logoMarkEl) logoMarkEl.innerHTML = logoMark();
 
     if (tg && tg.initData && API_BASE && !API_BASE.includes('REPLACE-WITH')) {
         const r = await api('/api/bootstrap');

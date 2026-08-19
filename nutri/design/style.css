@@ -85,10 +85,9 @@ body.in-telegram .close-btn { display: none; }
 .view::-webkit-scrollbar { width: 0; }
 
 /* ---- Брендовые шапки ---- */
-.brand-hero { text-align: center; padding: 26px 0 8px; }
-.brand-hero .mark { height: 96px; margin: 0 auto; display: block; color: var(--brand); }
-.brand-hero .wordmark { font-family: var(--f-script); font-size: 42px; font-weight: 700; line-height: 0.82; color: var(--brand); }
-.brand-hero .sub { font-family: var(--f-sans); font-size: 11px; letter-spacing: 0.16em; color: var(--muted); text-transform: lowercase; margin-top: 6px; }
+.brand-hero { padding: 14px 0 8px; }
+.logo-panel { background: #2B1613; border-radius: 24px; padding: 26px 24px; display: flex; align-items: center; justify-content: center; box-shadow: var(--sh-md); }
+.logo-img { width: 100%; max-width: 320px; height: auto; display: block; }
 
 .brand-bar { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 20px 0 10px; }
 .brand-bar .wordmark { font-family: var(--f-script); font-size: 26px; font-weight: 700; color: var(--brand); line-height: 1; }
