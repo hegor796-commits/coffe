@@ -63,24 +63,32 @@ test('bootstrap отдаёт меню и роль client', async () => {
   const { status, body } = await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }));
   assert.equal(status, 200);
   assert.equal(body.role, 'client');
-  assert.ok(body.menu.length > 100, `ожидали > 100 позиций, получили ${body.menu.length}`);
+  assert.ok(body.menu.length > 50, `ожидали > 50 позиций, получили ${body.menu.length}`);
 });
 
-test('серверный расчёт цены', async () => {
+test('серверный расчёт цены — капучино с кокосовым молоком', async () => {
   const menu = (await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }))).body.menu;
-  const cap = menu.find((p) => p.name === 'капучино 200');
-  assert.ok(cap, 'капучино 200 должен быть в меню');
+  const cap = menu.find((p) => p.name === 'Капучино');
+  assert.ok(cap, 'Капучино должен быть в меню');
+  assert.ok(cap.groups.length > 0, 'у Капучино должны быть группы модификаторов');
+
+  const milkGroup = cap.groups.find((g) => g.name === 'Молоко');
+  assert.ok(milkGroup, 'должна быть группа Молоко');
+  const coconut = milkGroup.options.find((o) => o.name === 'Кокосовое');
+  assert.ok(coconut, 'должна быть опция Кокосовое');
+
+  // Капучино база 250 + кокосовое молоко +80 = 330
   const { status, body } = await j(await fetch(`${BASE}/api/orders`, {
     method: 'POST', headers: H(CLIENT),
-    body: JSON.stringify({ lines: [{ productId: cap.id, qty: 1 }] }),
+    body: JSON.stringify({ lines: [{ productId: cap.id, optionIds: [coconut.id], qty: 1 }] }),
   }));
   assert.equal(status, 201);
-  assert.equal(body.order.total, 250);
+  assert.equal(body.order.total, 330);
 });
 
 test('отклоняет несуществующую опцию (защита от подмены цены)', async () => {
   const menu = (await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }))).body.menu;
-  const cap = menu.find((p) => p.name === 'капучино 200');
+  const cap = menu.find((p) => p.name === 'Капучино');
   const res = await fetch(`${BASE}/api/orders`, {
     method: 'POST', headers: H(CLIENT),
     body: JSON.stringify({ lines: [{ productId: cap.id, optionIds: ['FAKE_ID'], qty: 1 }] }),
@@ -90,7 +98,7 @@ test('отклоняет несуществующую опцию (защита �
 
 test('доставка без адреса отклоняется', async () => {
   const menu = (await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }))).body.menu;
-  const amer = menu.find((p) => p.name === 'американо 200');
+  const amer = menu.find((p) => p.name === 'Американо');
   const { status, body } = await j(await fetch(`${BASE}/api/orders`, {
     method: 'POST', headers: H(CLIENT),
     body: JSON.stringify({ fulfillment: 'delivery', delivery: {}, lines: [{ productId: amer.id, qty: 1 }] }),
@@ -106,7 +114,7 @@ test('клиент не видит ленту бариста (403)', async () =>
 
 test('полный жизненный цикл заказа владельцем: created → completed', async () => {
   const menu = (await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }))).body.menu;
-  const amer = menu.find((p) => p.name === 'американо 200');
+  const amer = menu.find((p) => p.name === 'Американо');
   const created = (await j(await fetch(`${BASE}/api/orders`, {
     method: 'POST', headers: H(CLIENT), body: JSON.stringify({ lines: [{ productId: amer.id, qty: 1 }] }),
   }))).body.order;
@@ -131,8 +139,8 @@ test('полный жизненный цикл заказа владельцем
 
 test('стоп-лист скрывает товар из меню клиента', async () => {
   const menu = (await j(await fetch(`${BASE}/api/bootstrap`, { headers: H(CLIENT) }))).body.menu;
-  const target = menu.find((p) => p.name === 'латте 300');
-  assert.ok(target, 'латте 300 должен быть в меню');
+  const target = menu.find((p) => p.name === 'Латте');
+  assert.ok(target, 'Латте должен быть в меню');
   await fetch(`${BASE}/api/staff/stop`, {
     method: 'POST', headers: H(OWNER), body: JSON.stringify({ productId: target.id, available: false }),
   });
