@@ -775,6 +775,7 @@ async function boot() {
                 return {
                     id: p.id, name: p.name, price: p.price, available: p.available,
                     description: p.description || '',
+                    photo_url: p.photoUrl || null,
                     categoryName,
                     catKey: catKeyFor(categoryName),
                     groups: p.groups || [],
