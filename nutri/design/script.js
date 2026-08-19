@@ -733,6 +733,9 @@ function initTelegramShell() {
     try {
         tg.ready();
         tg.expand();
+        // Отключаем «свайп вниз = свернуть» — иначе Telegram перехватывает
+        // вертикальные жесты и внутри приложения ничего не прокручивается.
+        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
         if (tg.setBackgroundColor) tg.setBackgroundColor('#FBF6EE');
         if (tg.setHeaderColor) tg.setHeaderColor('#FBF6EE');
         document.body.classList.add('in-telegram');

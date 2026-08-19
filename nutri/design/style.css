@@ -303,9 +303,11 @@ body.in-telegram .close-btn { display: none; }
 .sheet-root.show { pointer-events: auto; }
 .sheet-scrim { position: absolute; inset: 0; background: rgba(30, 20, 14, 0.45); opacity: 0; transition: opacity 0.26s ease; }
 .sheet-root.show .sheet-scrim { opacity: 1; }
-.sheet-panel { position: absolute; left: 0; right: 0; bottom: 0; background: var(--card); border-radius: 28px 28px 0 0; padding: 10px 20px 24px; transform: translateY(102%); transition: transform 0.3s cubic-bezier(.2,.7,.2,1); box-shadow: 0 -12px 44px rgba(0,0,0,0.22); }
+.sheet-panel { position: absolute; left: 0; right: 0; bottom: 0; background: var(--card); border-radius: 28px 28px 0 0; padding: 10px 20px 0; max-height: 92%; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; transform: translateY(102%); transition: transform 0.3s cubic-bezier(.2,.7,.2,1); box-shadow: 0 -12px 44px rgba(0,0,0,0.22); }
+.sheet-panel::-webkit-scrollbar { width: 0; }
 .sheet-root.show .sheet-panel { transform: translateY(0); }
-.sheet-grab { width: 42px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 14px; }
+.sheet-grab { position: sticky; top: 0; z-index: 2; width: 100%; padding: 4px 0 14px; margin: 0; background: var(--card); display: flex; justify-content: center; }
+.sheet-grab::before { content: ''; width: 42px; height: 5px; border-radius: 3px; background: var(--line); }
 .sheet-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
 .sheet-thumb { width: 56px; height: 56px; border-radius: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .sheet-thumb svg { transform: scale(0.62); }
@@ -322,7 +324,7 @@ body.in-telegram .close-btn { display: none; }
 .opt b { color: var(--carrot-2); font-weight: 800; font-size: 12px; }
 .opt.on { border-color: var(--carrot); background: var(--carrot-soft); box-shadow: 0 0 0 3px var(--carrot-soft); }
 .opt-note { color: var(--muted); font-size: 13px; padding: 4px 0 14px; }
-.sheet-foot { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.sheet-foot { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 12px 0 22px; background: var(--card); box-shadow: 0 -12px 18px -10px rgba(42,33,28,0.16); }
 .sheet-foot .qty { flex-shrink: 0; padding: 7px 9px; }
 .sheet-foot .main-btn { flex: 1; }
 
