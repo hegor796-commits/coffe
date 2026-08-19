@@ -106,7 +106,8 @@ body.in-telegram .close-btn { display: none; }
 .search:focus { outline: none; border-color: var(--carrot); box-shadow: 0 0 0 4px var(--carrot-soft); }
 
 /* ---- Категории / фильтры ---- */
-.categories, .filter-row { display: flex; gap: 9px; overflow-x: auto; padding-bottom: 16px; }
+.categories, .filter-row { display: flex; flex-wrap: nowrap; gap: 9px; overflow-x: auto; -webkit-overflow-scrolling: touch; touch-action: pan-x; overscroll-behavior-x: contain; scroll-snap-type: x proximity; padding-bottom: 16px; }
+.categories .cat-btn, .filter-row .chip { scroll-snap-align: start; }
 .categories::-webkit-scrollbar, .filter-row::-webkit-scrollbar { display: none; }
 .cat-btn, .chip { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line); color: var(--ink-soft); padding: 9px 15px; border-radius: 22px; font-family: var(--f-sans); font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.15s ease; box-shadow: var(--sh-sm); }
 .cat-btn svg, .chip svg { opacity: 0.7; }

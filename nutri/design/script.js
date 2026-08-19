@@ -152,6 +152,7 @@ let activeCat = 'all';         // 'all' либо имя категории
 let query = '';
 const cart = {};                 // key -> { productId, name, catKey, mods, unit, qty, optionIds:[] }
 let fulfillment = 'pickup';      // 'pickup' | 'delivery'
+let DELIVERY_FEE = 50;           // наценка за доставку (₽), приходит из bootstrap
 const delivery = { entrance: '', floor: '', apt: '' };
 let baristaFilter = 'active';
 
@@ -290,8 +291,12 @@ let sheet = null;   // { product, selected: {groupId: optionId}, qty }
 function defaultSelection(product) {
     const sel = {};
     for (const g of product.groups) {
-        const def = g.options.find((o) => o.isDefault) || g.options[0];
-        if (def) sel[g.id] = def.id;
+        const def = g.options.find((o) => o.isDefault);
+        if (def) { sel[g.id] = def.id; continue; }
+        // Обязательную группу («Объём») предвыбираем первой опцией.
+        // Необязательную (Молоко/Добавки) без явного дефолта оставляем
+        // пустой — от неё можно отказаться.
+        if (g.required && g.options[0]) sel[g.id] = g.options[0].id;
     }
     return sel;
 }
@@ -325,7 +330,16 @@ function closeSheet() {
     setTimeout(() => { el.innerHTML = ''; }, 260);
     sheet = null;
 }
-function selectOption(groupId, optionId) { sheet.selected[groupId] = optionId; renderSheet(); }
+function selectOption(groupId, optionId) {
+    const g = sheet.product.groups.find((x) => x.id === groupId);
+    // Повторный тап по выбранной опции необязательной группы — снять выбор.
+    if (g && !g.required && sheet.selected[groupId] === optionId) {
+        delete sheet.selected[groupId];
+    } else {
+        sheet.selected[groupId] = optionId;
+    }
+    renderSheet();
+}
 function sheetQty(d) { sheet.qty = Math.max(1, sheet.qty + d); renderSheet(); }
 function renderSheet() {
     const { product, selected, qty } = sheet;
@@ -395,6 +409,8 @@ function changeQty(key, d) {
 }
 function cartCount() { return Object.values(cart).reduce((s, v) => s + v.qty, 0); }
 function cartTotal() { return Object.values(cart).reduce((s, v) => s + v.unit * v.qty, 0); }
+// Итог с учётом доставки (для самовывоза наценки нет).
+function orderTotal() { return cartTotal() + (fulfillment === 'delivery' ? DELIVERY_FEE : 0); }
 let lastCartCount = 0;
 function updateCartBadge() {
     const b = document.getElementById('cart-badge');
@@ -461,10 +477,11 @@ function renderCart() {
         <div class="summary">
             <div class="row"><span>Позиции</span><span>${cartCount()} шт.</span></div>
             <div class="row"><span>Получение</span><span>${deliverySel ? 'Доставка в апартаменты' : 'Самовывоз из кофейни'}</span></div>
+            ${deliverySel ? `<div class="row"><span>Доставка</span><span>+${money(DELIVERY_FEE)}</span></div>` : ''}
             <div class="row"><span>Оплата</span><span>на кассе при получении</span></div>
-            <div class="row total"><span>Итого</span><span>${money(cartTotal())}</span></div>
+            <div class="row total"><span>Итого</span><span>${money(orderTotal())}</span></div>
         </div>
-        <div class="checkout"><button class="main-btn" onclick="checkout()">${deliverySel ? 'Оформить доставку' : 'Оформить заказ'} · ${money(cartTotal())}</button></div>`;
+        <div class="checkout"><button class="main-btn" onclick="checkout()">${deliverySel ? 'Оформить доставку' : 'Оформить заказ'} · ${money(orderTotal())}</button></div>`;
 }
 
 async function checkout() {
@@ -497,7 +514,7 @@ function checkoutDemo() {
     const order = {
         id: number, number, status: 'created', statusLabel: 'Новый',
         fulfillment, address: fulfillment === 'delivery' ? `Подъезд ${delivery.entrance}, этаж ${delivery.floor}, апарт. ${delivery.apt}` : '',
-        total: cartTotal(), items: vals.map((v) => ({ qty: v.qty, name: v.name, mods: v.mods })),
+        total: orderTotal(), items: vals.map((v) => ({ qty: v.qty, name: v.name, mods: v.mods })),
         createdAt: ts, customer: 'Вы',
     };
     clientOrders.unshift(order);
@@ -766,6 +783,7 @@ async function boot() {
         const r = await api('/api/bootstrap');
         if (r.ok) {
             LIVE = true; ROLE = r.data.role;
+            if (r.data.tenant && Number.isFinite(r.data.tenant.deliveryFee)) DELIVERY_FEE = r.data.tenant.deliveryFee;
             const catNameById = new Map(r.data.categories.map((c) => [c.id, c.name]));
             // Порядок категорий — как в бэкенде; в ленту попадают только непустые.
             const menuCatIds = new Set(r.data.menu.map((p) => p.categoryId));

@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   webhook_secret TEXT NOT NULL,
   payment_mode  TEXT NOT NULL DEFAULT 'offline',
   delivery_enabled INTEGER NOT NULL DEFAULT 1,
+  delivery_fee_rub INTEGER NOT NULL DEFAULT 50,
   delivery_note TEXT DEFAULT 'Доставляем только в апартаменты нашего здания.',
   primary_color TEXT DEFAULT '#F0692B',
   status        TEXT NOT NULL DEFAULT 'active',
@@ -116,6 +117,7 @@ CREATE TABLE IF NOT EXISTS counters (
 // Мягкие миграции для существующих БД (идемпотентно).
 try { db.exec('ALTER TABLE products ADD COLUMN photo_url TEXT'); } catch {}
 try { db.exec('ALTER TABLE products ADD COLUMN description TEXT'); } catch {}
+try { db.exec('ALTER TABLE tenants ADD COLUMN delivery_fee_rub INTEGER NOT NULL DEFAULT 50'); } catch {}
 
 export function now() {
   return Date.now();

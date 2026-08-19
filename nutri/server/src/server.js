@@ -165,7 +165,7 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
   // Загрузка приложения: инфо о кофейне, роль, меню.
   if (path === '/api/bootstrap' && method === 'GET') {
     return json(res, 200, {
-      tenant: { slug: tenant.slug, name: tenant.name, primaryColor: tenant.primary_color, paymentMode: tenant.payment_mode, deliveryEnabled: !!tenant.delivery_enabled, deliveryNote: tenant.delivery_note },
+      tenant: { slug: tenant.slug, name: tenant.name, primaryColor: tenant.primary_color, paymentMode: tenant.payment_mode, deliveryEnabled: !!tenant.delivery_enabled, deliveryFee: tenant.delivery_fee_rub ?? 50, deliveryNote: tenant.delivery_note },
       role,
       user: { id: String(user.id), name: [user.first_name, user.last_name].filter(Boolean).join(' ') },
       categories: categoriesOf(tenant.id),
@@ -188,6 +188,9 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
       if (!String(d.entrance || '').trim() || !String(d.floor || '').trim() || !String(d.apt || '').trim())
         return json(res, 400, { error: 'need_address', message: 'Укажите подъезд, этаж и апартаменты' });
     }
+    // Наценка за доставку добавляется к сумме заказа (самовывоз — бесплатно).
+    const deliveryFee = fulfillment === 'delivery' ? (tenant.delivery_fee_rub ?? 50) : 0;
+    const orderTotal = priced.total + deliveryFee;
     const id = uid();
     const number = nextOrderNumber(tenant.id);
     const ts = now();
@@ -197,7 +200,7 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
         addr_entrance, addr_floor, addr_apt, total_rub, items_json, history_json, created_at, updated_at)
        VALUES (?,?,?,?,?,'created',?,?,?,?,?,?,?,?,?)`,
     ).run(id, tenant.id, number, String(user.id), name, fulfillment,
-      d.entrance || null, d.floor || null, d.apt || null, priced.total,
+      d.entrance || null, d.floor || null, d.apt || null, orderTotal,
       JSON.stringify(priced.items), JSON.stringify([{ status: 'created', at: ts }]), ts, ts);
 
     const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
