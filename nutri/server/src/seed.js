@@ -46,6 +46,19 @@ function insertProduct(tenantId, catId, name, price, sort, groupIds = [], descri
   return pid;
 }
 
+const PHOTO_MAP = [
+  ['Капкейк',                        'img/kapkeik.jpg'],
+  ['Наполеон пирожное',              'img/napoleon.jpg'],
+  ['Пирожное сердце малина',         'img/serdce-malina.jpg'],
+  ['Медовик с малиной ПП пирожное',  'img/medovik.jpg'],
+  ['Медовик гречишный ПП пирожное',  'img/medovik.jpg'],
+];
+
+function applyPhotoUpdates(tenantId) {
+  const stmt = db.prepare('UPDATE products SET photo_url = ? WHERE tenant_id = ? AND name = ?');
+  for (const [name, url] of PHOTO_MAP) stmt.run(url, tenantId, name);
+}
+
 export function seedDemo() {
   const slug = 'lubov';
   const botToken = process.env.DEMO_BOT_TOKEN || '';
@@ -53,6 +66,8 @@ export function seedDemo() {
   if (existing) {
     // Обновляем токен при каждом старте — актуально после Revoke в BotFather.
     if (botToken) db.prepare('UPDATE tenants SET bot_token = ? WHERE slug = ?').run(botToken, slug);
+    // Обновляем photo_url для всех продуктов у которых появилось фото.
+    applyPhotoUpdates(existing.id);
     return existing.id;
   }
 
