@@ -35,11 +35,11 @@ function insertGroup(tenantId, name, required, minSelect, maxSelect, options) {
   return gid;
 }
 
-function insertProduct(tenantId, catId, name, price, sort, groupIds = [], description = '') {
+function insertProduct(tenantId, catId, name, price, sort, groupIds = [], description = '', photoUrl = null) {
   const pid = uid();
   db.prepare(
-    'INSERT INTO products (id, tenant_id, category_id, name, description, price_rub, sort) VALUES (?,?,?,?,?,?,?)',
-  ).run(pid, tenantId, catId, name, description || null, price, sort);
+    'INSERT INTO products (id, tenant_id, category_id, name, description, price_rub, photo_url, sort) VALUES (?,?,?,?,?,?,?,?)',
+  ).run(pid, tenantId, catId, name, description || null, price, photoUrl, sort);
   groupIds.forEach((gid, i) => {
     db.prepare('INSERT INTO product_modifier_groups (product_id, group_id, sort) VALUES (?,?,?)').run(pid, gid, i);
   });
@@ -313,10 +313,10 @@ export function seedDemo() {
 
   // === Десерты ===
   insertProduct(tenantId, catIds['десерты'], 'Ватрушка королевская', 260, s++, []);
-  insertProduct(tenantId, catIds['десерты'], 'Капкейк', 330, s++, []);
-  insertProduct(tenantId, catIds['десерты'], 'Наполеон пирожное', 310, s++, []);
+  insertProduct(tenantId, catIds['десерты'], 'Капкейк', 330, s++, [], '', 'img/kapkeik.jpg');
+  insertProduct(tenantId, catIds['десерты'], 'Наполеон пирожное', 310, s++, [], '', 'img/napoleon.jpg');
   insertProduct(tenantId, catIds['десерты'], 'Пирожное морковное', 270, s++, []);
-  insertProduct(tenantId, catIds['десерты'], 'Пирожное сердце малина', 300, s++, []);
+  insertProduct(tenantId, catIds['десерты'], 'Пирожное сердце малина', 300, s++, [], '', 'img/serdce-malina.jpg');
   insertProduct(tenantId, catIds['десерты'], 'Картофан шоколадный', 260, s++, []);
   insertProduct(tenantId, catIds['десерты'], 'Картофан фисташковый', 260, s++, []);
   insertProduct(tenantId, catIds['десерты'], 'Картофан арахисовый', 260, s++, []);
@@ -342,8 +342,8 @@ export function seedDemo() {
   insertProduct(tenantId, nsd, 'Муссовый чизкейк Миндальный', 299, s++, []);
   insertProduct(tenantId, nsd, 'Мусскейк «Малиновый» с гранатом', 299, s++, []);
   insertProduct(tenantId, nsd, 'Трюфельное ПП пирожное', 299, s++, []);
-  insertProduct(tenantId, nsd, 'Медовик с малиной ПП пирожное', 299, s++, []);
-  insertProduct(tenantId, nsd, 'Медовик гречишный ПП пирожное', 299, s++, []);
+  insertProduct(tenantId, nsd, 'Медовик с малиной ПП пирожное', 299, s++, [], '', 'img/medovik.jpg');
+  insertProduct(tenantId, nsd, 'Медовик гречишный ПП пирожное', 299, s++, [], '', 'img/medovik.jpg');
   insertProduct(tenantId, nsd, 'Чизкейк «Сан-Себастьян»', 299, s++, []);
 
   // === Десерты веган ===

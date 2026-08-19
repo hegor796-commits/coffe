@@ -134,13 +134,13 @@ const DEMO_SEED = [
     ['Фильтр V60', 260, 'Спешлти', true, 'Альтернативная заварка, раскрывает вкус зерна.'],
     ['Бамбл', 290, 'Спешлти', true, 'Эспрессо на апельсиновом соке со льдом.'],
     ['Какао', 240, 'Спешлти', true, 'Горячее какао на молоке.'],
-    ['Морковный торт', 260, 'Десерты', false, 'Влажный бисквит со специями и кремом.'],
-    ['Чизкейк', 290, 'Десерты', false, 'Нежный сливочный чизкейк.'],
+    ['Морковный торт', 260, 'Десерты', false, 'Влажный бисквит со специями и кремом.', 'img/napoleon.jpg'],
+    ['Чизкейк', 290, 'Десерты', false, 'Нежный сливочный чизкейк.', 'img/kapkeik.jpg'],
     ['Круассан', 180, 'Десерты', false, 'Свежая слоёная выпечка.'],
 ];
 function demoProducts() {
-    return DEMO_SEED.map(([name, price, categoryName, hasGroups, description], i) => ({
-        id: 'demo-' + i, name, price, available: true, categoryName, description,
+    return DEMO_SEED.map(([name, price, categoryName, hasGroups, description, photo_url = null], i) => ({
+        id: 'demo-' + i, name, price, available: true, categoryName, description, photo_url,
         catKey: catKeyFor(categoryName),
         groups: hasGroups ? GROUPS_DRINK : [],
     }));
@@ -257,7 +257,7 @@ function renderMenu(opts) {
         const desc = p.description ? `<p class="card-desc">${p.description}</p>` : '';
         return `
         <article class="menu-card ${out ? 'sold-out' : ''} ${enter}">
-            <div class="card-img cat-${p.catKey}" ${open}>${cupArt()}</div>
+            <div class="card-img ${p.photo_url ? '' : `cat-${p.catKey}`}" ${open}>${p.photo_url ? `<img class="card-photo" src="${p.photo_url}" alt="${p.name}" loading="lazy">` : cupArt()}</div>
             <div class="card-body" ${open}>
                 <h2 class="card-title">${p.name}</h2>
                 ${desc}
@@ -340,7 +340,7 @@ function renderSheet() {
         <div class="sheet-panel">
             <div class="sheet-grab"></div>
             <div class="sheet-head">
-                <div class="sheet-thumb cat-${product.catKey}">${cupArt()}</div>
+                <div class="sheet-thumb ${product.photo_url ? 'sheet-thumb-photo' : `cat-${product.catKey}`}">${product.photo_url ? `<img class="sheet-photo" src="${product.photo_url}" alt="${product.name}">` : cupArt()}</div>
                 <div><div class="sheet-name">${product.name}</div><div class="sheet-base">${money(product.price)} · базовая</div></div>
                 <button class="sheet-x" onclick="closeSheet()" aria-label="Закрыть">✕</button>
             </div>
