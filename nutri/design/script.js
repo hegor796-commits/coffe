@@ -507,7 +507,13 @@ async function checkoutLive() {
     }
     const number = r.data.order.number;
     // Онлайн-оплата: сервер вернул ссылку-счёт — открываем платёжное окно Telegram.
-    if (r.data.invoiceLink && tg && tg.openInvoice) {
+    // Заказ до оплаты висит в статусе pending и баристе не показывается, поэтому
+    // корзину чистим только после успешной оплаты.
+    if (r.data.invoiceLink) {
+        if (!tg || !tg.openInvoice) {
+            toast('Обновите Telegram, чтобы оплатить заказ');
+            return;
+        }
         tg.openInvoice(r.data.invoiceLink, (status) => {
             if (status === 'paid') {
                 Object.keys(cart).forEach((k) => delete cart[k]);
