@@ -62,10 +62,16 @@ function applyPhotoUpdates(tenantId) {
 export function seedDemo() {
   const slug = 'lubov';
   const botToken = process.env.DEMO_BOT_TOKEN || '';
+  // Токен платёжного провайдера (ЮKassa) из BotFather. Если задан — включаем
+  // онлайн-оплату; если пусто — оплата остаётся на кассе.
+  const providerToken = process.env.DEMO_PROVIDER_TOKEN || '';
   const existing = db.prepare('SELECT id FROM tenants WHERE slug = ?').get(slug);
   if (existing) {
     // Обновляем токен при каждом старте — актуально после Revoke в BotFather.
     if (botToken) db.prepare('UPDATE tenants SET bot_token = ? WHERE slug = ?').run(botToken, slug);
+    // Провайдер: задан → онлайн-оплата, пусто → на кассе (можно выключить, убрав env).
+    db.prepare('UPDATE tenants SET payment_provider_token = ?, payment_mode = ? WHERE slug = ?')
+      .run(providerToken || null, providerToken ? 'online' : 'offline', slug);
     // Обновляем photo_url для всех продуктов у которых появилось фото.
     applyPhotoUpdates(existing.id);
     return existing.id;

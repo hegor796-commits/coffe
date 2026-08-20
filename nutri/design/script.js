@@ -153,6 +153,7 @@ let query = '';
 const cart = {};                 // key -> { productId, name, catKey, mods, unit, qty, optionIds:[] }
 let fulfillment = 'pickup';      // 'pickup' | 'delivery'
 let DELIVERY_FEE = 50;           // наценка за доставку (₽), приходит из bootstrap
+let PAYMENT_ONLINE = false;      // true — оплата картой в приложении (из bootstrap)
 const delivery = { entrance: '', floor: '', apt: '' };
 let baristaFilter = 'active';
 
@@ -481,10 +482,10 @@ function renderCart() {
             <div class="row"><span>Позиции</span><span>${cartCount()} шт.</span></div>
             <div class="row"><span>Получение</span><span>${deliverySel ? 'Доставка в апартаменты' : 'Самовывоз из кофейни'}</span></div>
             ${deliverySel ? `<div class="row"><span>Доставка</span><span>+${money(DELIVERY_FEE)}</span></div>` : ''}
-            <div class="row"><span>Оплата</span><span>на кассе при получении</span></div>
+            <div class="row"><span>Оплата</span><span>${PAYMENT_ONLINE ? 'картой в приложении' : 'на кассе при получении'}</span></div>
             <div class="row total"><span>Итого</span><span>${money(orderTotal())}</span></div>
         </div>
-        <div class="checkout"><button class="main-btn" onclick="checkout()">${deliverySel ? 'Оформить доставку' : 'Оформить заказ'} · ${money(orderTotal())}</button></div>`;
+        <div class="checkout"><button class="main-btn" onclick="checkout()">${PAYMENT_ONLINE ? 'Оплатить' : (deliverySel ? 'Оформить доставку' : 'Оформить заказ')} · ${money(orderTotal())}</button></div>`;
 }
 
 async function checkout() {
@@ -504,10 +505,29 @@ async function checkoutLive() {
         toast((r.data && r.data.message) || 'Не удалось оформить заказ');
         return;
     }
+    const number = r.data.order.number;
+    // Онлайн-оплата: сервер вернул ссылку-счёт — открываем платёжное окно Telegram.
+    if (r.data.invoiceLink && tg && tg.openInvoice) {
+        tg.openInvoice(r.data.invoiceLink, (status) => {
+            if (status === 'paid') {
+                Object.keys(cart).forEach((k) => delete cart[k]);
+                fulfillment = 'pickup'; delivery.entrance = delivery.floor = delivery.apt = '';
+                updateCartBadge(); renderCart();
+                toast('Оплачено ✓ Заказ ' + number + ' принят');
+                loadClientOrders().then(() => switchTab('client', 'orders'));
+            } else if (status === 'failed') {
+                toast('Оплата не прошла. Попробуйте ещё раз');
+            } else {
+                toast('Оплата отменена');
+            }
+        });
+        return;
+    }
+    // Оффлайн-оплата: заказ сразу оформлен.
     Object.keys(cart).forEach((k) => delete cart[k]);
     fulfillment = 'pickup'; delivery.entrance = delivery.floor = delivery.apt = '';
     updateCartBadge(); renderCart();
-    toast('Заказ ' + r.data.order.number + ' оформлен ✓');
+    toast('Заказ ' + number + ' оформлен ✓');
     switchTab('client', 'orders');
 }
 function checkoutDemo() {
@@ -787,6 +807,7 @@ async function boot() {
         if (r.ok) {
             LIVE = true; ROLE = r.data.role;
             if (r.data.tenant && Number.isFinite(r.data.tenant.deliveryFee)) DELIVERY_FEE = r.data.tenant.deliveryFee;
+            if (r.data.tenant) PAYMENT_ONLINE = r.data.tenant.paymentMode === 'online';
             const catNameById = new Map(r.data.categories.map((c) => [c.id, c.name]));
             // Порядок категорий — как в бэкенде; в ленту попадают только непустые.
             const menuCatIds = new Set(r.data.menu.map((p) => p.categoryId));

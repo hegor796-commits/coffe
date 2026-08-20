@@ -60,7 +60,30 @@ export async function setWebhook(botToken, url, secretToken) {
     url,
     secret_token: secretToken,
     drop_pending_updates: true,
-    allowed_updates: ['message'],
+    // pre_checkout_query обязателен для оплаты; successful_payment приходит как message.
+    allowed_updates: ['message', 'pre_checkout_query'],
+  });
+}
+
+/**
+ * Создаёт ссылку-счёт (Telegram Payments). Сумма — в минимальных единицах
+ * валюты (для RUB — копейки). prices: [{ label, amount }].
+ */
+export async function createInvoiceLink(botToken, { title, description, payload, providerToken, currency, prices }) {
+  return tgApi(botToken, 'createInvoiceLink', {
+    title, description, payload,
+    provider_token: providerToken,
+    currency: currency || 'RUB',
+    prices,
+  });
+}
+
+/** Подтверждение перед списанием. Ответить нужно в течение 10 секунд. */
+export async function answerPreCheckoutQuery(botToken, id, ok, errorMessage) {
+  return tgApi(botToken, 'answerPreCheckoutQuery', {
+    pre_checkout_query_id: id,
+    ok: !!ok,
+    error_message: ok ? undefined : (errorMessage || 'Не удалось оформить оплату'),
   });
 }
 

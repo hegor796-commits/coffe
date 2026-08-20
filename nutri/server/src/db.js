@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS tenants (
   bot_token     TEXT NOT NULL,
   bot_username  TEXT,
   webhook_secret TEXT NOT NULL,
-  payment_mode  TEXT NOT NULL DEFAULT 'offline',
+  payment_mode  TEXT NOT NULL DEFAULT 'offline',   -- offline | online
+  payment_provider_token TEXT,                      -- секрет провайдера (ЮKassa) из BotFather
   delivery_enabled INTEGER NOT NULL DEFAULT 1,
   delivery_fee_rub INTEGER NOT NULL DEFAULT 50,
   delivery_note TEXT DEFAULT 'Доставляем только в апартаменты нашего здания.',
@@ -99,6 +100,7 @@ CREATE TABLE IF NOT EXISTS orders (
   addr_floor    TEXT,
   addr_apt      TEXT,
   total_rub     INTEGER NOT NULL,
+  payment_status TEXT NOT NULL DEFAULT 'none',      -- none (оффлайн) | pending | paid
   items_json    TEXT NOT NULL,                     -- снапшот позиций
   history_json  TEXT NOT NULL DEFAULT '[]',
   created_at    INTEGER NOT NULL,
@@ -118,6 +120,8 @@ CREATE TABLE IF NOT EXISTS counters (
 try { db.exec('ALTER TABLE products ADD COLUMN photo_url TEXT'); } catch {}
 try { db.exec('ALTER TABLE products ADD COLUMN description TEXT'); } catch {}
 try { db.exec('ALTER TABLE tenants ADD COLUMN delivery_fee_rub INTEGER NOT NULL DEFAULT 50'); } catch {}
+try { db.exec('ALTER TABLE tenants ADD COLUMN payment_provider_token TEXT'); } catch {}
+try { db.exec("ALTER TABLE orders ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'none'"); } catch {}
 
 export function now() {
   return Date.now();

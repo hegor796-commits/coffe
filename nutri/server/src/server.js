@@ -10,7 +10,7 @@ import {
   roleOf, buildMenu, categoriesOf, priceOrder, nextStatus,
   STATUS_LABEL, STAFF_ROLES, ADMIN_ROLES, ACTIVE_STATUSES,
 } from './domain.js';
-import { validateInitData, getMe, setWebhook, sendMessage, webAppButton } from './telegram.js';
+import { validateInitData, getMe, setWebhook, sendMessage, webAppButton, createInvoiceLink, answerPreCheckoutQuery } from './telegram.js';
 import { seedDemo } from './seed.js';
 
 const uid = () => crypto.randomUUID();
@@ -195,15 +195,35 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     const number = nextOrderNumber(tenant.id);
     const ts = now();
     const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Гость';
+    // Онлайн-оплата — если у кофейни настроен провайдер. Иначе оплата на кассе.
+    const online = tenant.payment_mode === 'online' && !!tenant.payment_provider_token;
+    const payStatus = online ? 'pending' : 'none';
     db.prepare(
       `INSERT INTO orders (id, tenant_id, number, tg_user_id, customer_name, status, fulfillment,
-        addr_entrance, addr_floor, addr_apt, total_rub, items_json, history_json, created_at, updated_at)
-       VALUES (?,?,?,?,?,'created',?,?,?,?,?,?,?,?,?)`,
+        addr_entrance, addr_floor, addr_apt, total_rub, payment_status, items_json, history_json, created_at, updated_at)
+       VALUES (?,?,?,?,?,'created',?,?,?,?,?,?,?,?,?,?)`,
     ).run(id, tenant.id, number, String(user.id), name, fulfillment,
-      d.entrance || null, d.floor || null, d.apt || null, orderTotal,
+      d.entrance || null, d.floor || null, d.apt || null, orderTotal, payStatus,
       JSON.stringify(priced.items), JSON.stringify([{ status: 'created', at: ts }]), ts, ts);
 
     const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+
+    if (online) {
+      // Счёт на всю сумму одной строкой (копейки). Персонал уведомим после оплаты.
+      const inv = await createInvoiceLink(tenant.bot_token, {
+        title: `Заказ ${number}`,
+        description: JSON.parse(o.items_json).map((it) => `${it.qty}× ${it.name}`).join(', ').slice(0, 255) || 'Заказ',
+        payload: `order:${id}`,
+        providerToken: tenant.payment_provider_token,
+        currency: 'RUB',
+        prices: [{ label: `Заказ ${number}`, amount: orderTotal * 100 }],
+      });
+      if (!inv || !inv.ok || !inv.result) {
+        return json(res, 502, { error: 'invoice_failed', message: 'Не удалось создать счёт на оплату' });
+      }
+      return json(res, 201, { order: orderPublic(o), invoiceLink: inv.result });
+    }
+
     notifyStaffNewOrder(tenant, o).catch((e) => console.error('notify staff', e));
     return json(res, 201, { order: orderPublic(o) });
   }
@@ -218,7 +238,8 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
   // Персонал: лента заказов (активные + недавний архив).
   if (path === '/api/staff/orders' && method === 'GET') {
     if (!STAFF_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
-    const rows = db.prepare('SELECT * FROM orders WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100').all(tenant.id);
+    // Неоплаченные онлайн-заказы (payment_status='pending') в ленту не попадают.
+    const rows = db.prepare("SELECT * FROM orders WHERE tenant_id = ? AND payment_status != 'pending' ORDER BY created_at DESC LIMIT 100").all(tenant.id);
     return json(res, 200, {
       active: rows.filter((o) => ACTIVE_STATUSES.includes(o.status)).map(orderStaff),
       archive: rows.filter((o) => !ACTIVE_STATUSES.includes(o.status)).slice(0, 30).map(orderStaff),
@@ -362,8 +383,34 @@ async function adminRoutes(req, res, path, method) {
 
 // ---------- Обработка апдейтов бота ----------
 async function handleBotUpdate(tenant, update) {
+  // 1) Подтверждение оплаты перед списанием — ответить в течение 10 сек.
+  if (update.pre_checkout_query) {
+    const q = update.pre_checkout_query;
+    const orderId = String(q.invoice_payload || '').startsWith('order:') ? q.invoice_payload.slice(6) : null;
+    const o = orderId ? db.prepare('SELECT * FROM orders WHERE id = ? AND tenant_id = ?').get(orderId, tenant.id) : null;
+    const ok = !!o && o.payment_status === 'pending' && o.total_rub * 100 === q.total_amount;
+    await answerPreCheckoutQuery(tenant.bot_token, q.id, ok, ok ? undefined : 'Заказ не найден или уже оплачен');
+    return;
+  }
+
   const msg = update.message;
-  if (!msg || !msg.text) return;
+  if (!msg) return;
+
+  // 2) Успешная оплата — отмечаем заказ оплаченным и уведомляем персонал.
+  if (msg.successful_payment) {
+    const payload = String(msg.successful_payment.invoice_payload || '');
+    const orderId = payload.startsWith('order:') ? payload.slice(6) : null;
+    const o = orderId ? db.prepare('SELECT * FROM orders WHERE id = ? AND tenant_id = ?').get(orderId, tenant.id) : null;
+    if (o && o.payment_status !== 'paid') {
+      db.prepare("UPDATE orders SET payment_status = 'paid', updated_at = ? WHERE id = ?").run(now(), o.id);
+      const paid = db.prepare('SELECT * FROM orders WHERE id = ?').get(o.id);
+      notifyStaffNewOrder(tenant, paid).catch((e) => console.error('notify staff', e));
+      await sendMessage(tenant.bot_token, msg.chat.id, `💳 Оплата получена. Заказ ${o.number} принят в работу!`);
+    }
+    return;
+  }
+
+  if (!msg.text) return;
   if (msg.text.startsWith('/start')) {
     const url = webAppBase ? `${webAppBase}/?t=${tenant.slug}` : null;
     const kb = url ? webAppButton('Открыть меню', url) : undefined;
