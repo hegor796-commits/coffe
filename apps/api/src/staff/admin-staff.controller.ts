@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AppConfig } from '../config/configuration';
 import { z } from 'zod';
 import { inviteStaffSchema, Role, type InviteStaffDto } from '@coffee/shared';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -26,10 +27,10 @@ export class AdminStaffController {
 
   constructor(
     private readonly staff: StaffService,
-    config: ConfigService,
+    config: ConfigService<AppConfig, true>,
   ) {
     // Имя бота нужно для сборки deep-link приглашения.
-    this.botUsername = process.env.TELEGRAM_BOT_USERNAME ?? 'your_bot';
+    this.botUsername = config.get('telegram', { infer: true }).botUsername || 'your_bot';
   }
 
   @Get('staff')

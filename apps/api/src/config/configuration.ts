@@ -25,6 +25,8 @@ export interface AppConfig {
   };
   telegram: {
     botToken: string;
+    /** @username бота без «@» — из него собираются ссылки на Mini App. */
+    botUsername: string;
     webhookUrl: string;
     webhookSecret: string;
   };
@@ -33,7 +35,10 @@ export interface AppConfig {
     /** Фолбэк-креды одного магазина, если в БД нет payment_credential. */
     shopId: string;
     secretKey: string;
-    /** Куда ЮKassa вернёт клиента после оплаты (https, обычно ссылка на Mini App). */
+    /**
+     * Куда ЮKassa вернёт клиента после оплаты. Если не задан, собирается из
+     * TELEGRAM_BOT_USERNAME — та же ссылка на Mini App, что и в приглашениях.
+     */
     returnUrl: string;
     /** Формировать чек 54-ФЗ на стороне ЮKassa (облачная касса). */
     receiptEnabled: boolean;
@@ -65,6 +70,7 @@ export default (): AppConfig => ({
   },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
+    botUsername: process.env.TELEGRAM_BOT_USERNAME ?? '',
     webhookUrl: process.env.TELEGRAM_WEBHOOK_URL ?? '',
     webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? 'dev-webhook-secret',
   },

@@ -98,7 +98,8 @@ pnpm --filter @coffee/tma dev        # Mini App на :5173
 | `SECRETS_ENCRYPTION_KEY` | да | 32 случайных байта: `openssl rand -hex 32`. Без него секрет в БД не шифруется по-настоящему. |
 | `YOOKASSA_SHOP_ID` | да* | shopId магазина. |
 | `YOOKASSA_SECRET_KEY` | да* | Секретный ключ магазина. |
-| `YOOKASSA_RETURN_URL` | да | Куда вернуть клиента после оплаты: `https://t.me/<бот>/<приложение>`. |
+| `TELEGRAM_BOT_USERNAME` | да | @username бота без «@». Из него собирается и ссылка возврата с оплаты, и приглашения персонала. |
+| `YOOKASSA_RETURN_URL` | нет | Переопределяет адрес возврата. Нужен, только если Mini App живёт не в Telegram. |
 | `YOOKASSA_RECEIPT_ENABLED` | нет | `true`, если чек 54-ФЗ формирует ЮKassa. По умолчанию `false`. |
 | `YOOKASSA_VAT_CODE` | нет | Ставка НДС для позиций чека. `1` — без НДС (УСН), по умолчанию. |
 | `YOOKASSA_WEBHOOK_IPS` | нет | Список разрешённых адресов уведомлений. По умолчанию — официальные подсети ЮKassa. Пустая строка отключает проверку. |

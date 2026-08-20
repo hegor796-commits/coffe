@@ -330,10 +330,18 @@ export class PaymentsService {
     return { customer: contact, items: receiptItems };
   }
 
-  /** Адрес возврата после оплаты: Mini App, иначе публичный адрес фронта. */
+  /**
+   * Адрес возврата после оплаты. По умолчанию — ссылка на Mini App,
+   * собранная из имени бота (та же форма, что у приглашений персонала).
+   * YOOKASSA_RETURN_URL нужен, только если фронт живёт где-то ещё.
+   */
   private returnUrl(orderId: string): string {
     const cfg = this.config.get('yookassa', { infer: true });
-    const base = cfg.returnUrl || this.config.get('publicAppUrl', { infer: true });
+    const botUsername = this.config.get('telegram', { infer: true }).botUsername;
+    const base =
+      cfg.returnUrl ||
+      (botUsername ? `https://t.me/${botUsername}/app` : '') ||
+      this.config.get('publicAppUrl', { infer: true });
     // Для ссылки на Mini App (t.me/bot/app) параметр называется startapp —
     // фронт разбирает его и открывает экран нужного заказа.
     const param = /t\.me\//.test(base) ? 'startapp' : 'order';
