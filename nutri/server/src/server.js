@@ -209,16 +209,40 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
 
     if (online) {
+      // Чек 54-ФЗ для боевой ЮKassa: позиция на каждый товар + доставка.
+      const vatCode = Number(process.env.RECEIPT_VAT_CODE || 1);
+      const receiptItems = priced.items.map((it) => ({
+        description: `${it.name}${it.mods ? ' · ' + it.mods : ''}`.slice(0, 128),
+        quantity: String(it.qty),
+        amount: { value: it.unit.toFixed(2), currency: 'RUB' },
+        vat_code: vatCode,
+        payment_subject: 'commodity',
+        payment_mode: 'full_prepayment',
+      }));
+      if (deliveryFee > 0) {
+        receiptItems.push({
+          description: 'Доставка',
+          quantity: '1',
+          amount: { value: deliveryFee.toFixed(2), currency: 'RUB' },
+          vat_code: vatCode,
+          payment_subject: 'service',
+          payment_mode: 'full_prepayment',
+        });
+      }
       // Счёт на всю сумму одной строкой (копейки). Персонал уведомим после оплаты.
       const inv = await createInvoiceLink(tenant.bot_token, {
         title: `Заказ ${number}`,
-        description: JSON.parse(o.items_json).map((it) => `${it.qty}× ${it.name}`).join(', ').slice(0, 255) || 'Заказ',
+        description: priced.items.map((it) => `${it.qty}× ${it.name}`).join(', ').slice(0, 255) || 'Заказ',
         payload: `order:${id}`,
         providerToken: tenant.payment_provider_token,
         currency: 'RUB',
         prices: [{ label: `Заказ ${number}`, amount: orderTotal * 100 }],
+        providerData: { receipt: { items: receiptItems } },
+        needEmail: true,
+        sendEmailToProvider: true,
       });
       if (!inv || !inv.ok || !inv.result) {
+        console.error('[invoice] createInvoiceLink failed:', inv && inv.description);
         return json(res, 502, { error: 'invoice_failed', message: 'Не удалось создать счёт на оплату' });
       }
       return json(res, 201, { order: orderPublic(o), invoiceLink: inv.result });

@@ -69,13 +69,18 @@ export async function setWebhook(botToken, url, secretToken) {
  * Создаёт ссылку-счёт (Telegram Payments). Сумма — в минимальных единицах
  * валюты (для RUB — копейки). prices: [{ label, amount }].
  */
-export async function createInvoiceLink(botToken, { title, description, payload, providerToken, currency, prices }) {
-  return tgApi(botToken, 'createInvoiceLink', {
+export async function createInvoiceLink(botToken, { title, description, payload, providerToken, currency, prices, providerData, needEmail, sendEmailToProvider }) {
+  const req = {
     title, description, payload,
     provider_token: providerToken,
     currency: currency || 'RUB',
     prices,
-  });
+  };
+  // Для боевой ЮKassa нужен чек (54-ФЗ) в provider_data и email покупателя.
+  if (providerData) req.provider_data = JSON.stringify(providerData);
+  if (needEmail) req.need_email = true;
+  if (sendEmailToProvider) req.send_email_to_provider = true;
+  return tgApi(botToken, 'createInvoiceLink', req);
 }
 
 /** Подтверждение перед списанием. Ответить нужно в течение 10 секунд. */
