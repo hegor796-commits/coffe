@@ -11,7 +11,7 @@ interface TelegramWebApp {
     impactOccurred: (style: 'light' | 'medium' | 'heavy') => void;
     notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
   };
-  openLink?: (url: string) => void;
+  openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
 }
 
 declare global {
@@ -35,6 +35,17 @@ export function getStartParam(): string | undefined {
 /** Тактильный отклик (безопасно, если API недоступен). */
 export function haptic(type: 'success' | 'error' | 'warning'): void {
   getWebApp()?.HapticFeedback?.notificationOccurred(type);
+}
+
+/**
+ * Открыть страницу оплаты. В Telegram — во внешнем браузере (openLink):
+ * платёжные страницы банков и 3-D Secure во встроенном WebView работают
+ * нестабильно. Вне Telegram — обычный переход по адресу.
+ */
+export function openPaymentPage(url: string): void {
+  const wa = getWebApp();
+  if (wa?.openLink) wa.openLink(url);
+  else window.location.href = url;
 }
 
 /** Инициализация: сообщаем Telegram о готовности и разворачиваем на весь экран. */

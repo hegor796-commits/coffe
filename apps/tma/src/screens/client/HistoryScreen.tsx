@@ -17,6 +17,8 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
 
 const ACTIVE: OrderStatus[] = [
   OrderStatus.Created,
+  OrderStatus.PendingPayment,
+  OrderStatus.Paid,
   OrderStatus.Accepted,
   OrderStatus.Preparing,
   OrderStatus.Ready,

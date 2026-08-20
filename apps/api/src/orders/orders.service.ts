@@ -25,7 +25,12 @@ import { OrderNumberService } from './order-number.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { QueueService } from '../queue/queue.service';
-import { AUTO_CANCEL_MINUTES, TIMEOUT_JOBS } from '../queue/queue.constants';
+import {
+  AUTO_CANCEL_MINUTES,
+  PAYMENT_JOBS,
+  PAYMENT_TIMEOUT_MINUTES,
+  TIMEOUT_JOBS,
+} from '../queue/queue.constants';
 import { AuthContext } from '../auth/auth.types';
 
 @Injectable()
@@ -85,9 +90,10 @@ export class OrdersService {
 
     const number = await this.numbers.next(location.id, location.timezone);
     const paymentMode = location.tenant.paymentMode as PaymentMode;
-    // MVP (offline): заказ сразу ждёт бариста. online (фаза 2): pending_payment.
+    // offline: заказ сразу ждёт бариста. online: сначала оплата, к бариста
+    // заказ попадает только после подтверждения от эквайринга.
     const status =
-      paymentMode === PaymentMode.Online ? OrderStatus.Created : OrderStatus.Created;
+      paymentMode === PaymentMode.Online ? OrderStatus.PendingPayment : OrderStatus.Created;
 
     const order = await this.prisma.order.create({
       data: {
@@ -116,11 +122,15 @@ export class OrdersService {
 
     // Реалтайм в ленту бариста + уведомление в бот + отложенная автоотмена.
     // Все три — best-effort: сбой Redis/бота не должен ронять заказ клиента.
-    await this.safe('realtime OrderCreated', () =>
-      this.realtime.emitToLocation(location.id, WsEvent.OrderCreated, this.toUpdatePayload(order)),
-    );
-    await this.safe('notifyNewOrder', () => this.notifications.notifyNewOrder(order.id));
-    await this.safe('scheduleAutoCancel', () => this.scheduleAutoCancel(order.id));
+    // Неоплаченный заказ бариста не показываем и в бот не шлём: до оплаты
+    // его может и не быть. Оба уведомления уйдут при переходе в paid.
+    if (status !== OrderStatus.PendingPayment) {
+      await this.safe('realtime OrderCreated', () =>
+        this.realtime.emitToLocation(location.id, WsEvent.OrderCreated, this.toUpdatePayload(order)),
+      );
+      await this.safe('notifyNewOrder', () => this.notifications.notifyNewOrder(order.id));
+    }
+    await this.safe('scheduleAutoCancel', () => this.scheduleAutoCancel(order.id, paymentMode));
 
     return this.serialize(order);
   }
@@ -176,6 +186,28 @@ export class OrdersService {
     return this.applyTransition(order, event, `staff:${user.sub}`);
   }
 
+  /**
+   * Заказ оплачен онлайн (вызывается платёжным модулем по подтверждению
+   * эквайринга). Здесь же заказ впервые появляется у бариста.
+   */
+  async markPaid(orderId: string): Promise<void> {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return;
+    if (!canTransition(order.status as OrderStatus, OrderEvent.Pay)) return;
+
+    await this.applyTransition(order, OrderEvent.Pay, 'payment');
+
+    // Оплаченный заказ — это «новый заказ» для точки: лента и бот.
+    const fresh = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!fresh) return;
+    await this.safe('realtime OrderCreated', () =>
+      this.realtime.emitToLocation(fresh.locationId, WsEvent.OrderCreated, this.toUpdatePayload(fresh)),
+    );
+    await this.safe('notifyNewOrder', () => this.notifications.notifyNewOrder(orderId));
+    // С момента оплаты у бариста снова обычный таймер на принятие заказа.
+    await this.safe('rescheduleAutoCancel', () => this.scheduleAutoCancel(orderId, PaymentMode.Offline));
+  }
+
   /** Автоотмена из воркера таймаутов (без пользовательского контекста). */
   async autoCancel(orderId: string): Promise<void> {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
@@ -187,7 +219,13 @@ export class OrdersService {
   // --- внутреннее ---
 
   private async applyTransition(
-    order: { id: string; status: OrderStatus | string; locationId: string; statusHistory: unknown },
+    order: {
+      id: string;
+      status: OrderStatus | string;
+      locationId: string;
+      statusHistory: unknown;
+      paymentMode: PaymentMode | string;
+    },
     event: OrderEvent,
     by: string,
   ) {
@@ -216,6 +254,13 @@ export class OrdersService {
     // Заказ принят/терминален — снимаем отложенную автоотмену.
     if (target !== OrderStatus.Created && target !== OrderStatus.Paid) {
       await this.safe('cancelAutoCancel', () => this.cancelAutoCancel(order.id));
+    }
+
+    // Онлайн-заказ отменён после оплаты — деньги надо вернуть. Ставим в
+    // очередь (ретраи), а не дёргаем API прямо здесь: смена статуса не должна
+    // зависеть от доступности эквайринга. Подстраховка — периодическая сверка.
+    if (TERMINAL_STATUSES.includes(target) && order.paymentMode === PaymentMode.Online) {
+      await this.safe('scheduleRefund', () => this.scheduleRefund(order.id));
     }
 
     return this.serialize(updated);
@@ -256,15 +301,33 @@ export class OrdersService {
     }
   }
 
-  private async scheduleAutoCancel(orderId: string): Promise<void> {
+  private async scheduleAutoCancel(orderId: string, mode: PaymentMode): Promise<void> {
+    const minutes = mode === PaymentMode.Online ? PAYMENT_TIMEOUT_MINUTES : AUTO_CANCEL_MINUTES;
+    // Тот же jobId — повторная постановка после оплаты заменяет платёжный
+    // таймер обычным, а не добавляет вторую автоотмену.
+    await this.cancelAutoCancel(orderId);
     await this.queue.orderTimeouts.add(
       TIMEOUT_JOBS.AutoCancel,
       { orderId },
       {
-        delay: AUTO_CANCEL_MINUTES * 60_000,
+        delay: minutes * 60_000,
         jobId: `autocancel:${orderId}`,
         removeOnComplete: true,
         removeOnFail: true,
+      },
+    );
+  }
+
+  /** Возврат по отменённому оплаченному заказу — через очередь с ретраями. */
+  private async scheduleRefund(orderId: string): Promise<void> {
+    await this.queue.payments.add(
+      PAYMENT_JOBS.Refund,
+      { orderId },
+      {
+        jobId: `refund:${orderId}`,
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: true,
       },
     );
   }

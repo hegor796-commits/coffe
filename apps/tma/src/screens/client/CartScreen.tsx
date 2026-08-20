@@ -2,16 +2,24 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatMoney, type CreateOrderDto } from '@coffee/shared';
 import { useCart } from '../../store/cart';
-import { useCreateOrder } from '../../api/hooks';
-import { haptic } from '../../telegram';
+import { useCreateOrder, usePayOrder } from '../../api/hooks';
+import { haptic, openPaymentPage } from '../../telegram';
 import { ApiError } from '../../api/client';
+import { useAuth } from '../../store/auth';
+
+const EMAIL_KEY = 'coffee_receipt_email';
 
 export function CartScreen({ locationId }: { locationId: string }) {
   const { lines, changeQty, clear, total } = useCart();
   const [comment, setComment] = useState('');
   const createOrder = useCreateOrder();
+  const payOrder = usePayOrder();
   const navigate = useNavigate();
   const [err, setErr] = useState<string | null>(null);
+  const isOnline = useAuth((s) => s.tenant?.paymentMode) === 'online';
+  // Почту для чека спрашиваем один раз и запоминаем: Telegram её не отдаёт.
+  const [email, setEmail] = useState(() => localStorage.getItem(EMAIL_KEY) ?? '');
+  const busy = createOrder.isPending || payOrder.isPending;
 
   if (lines.length === 0) {
     return (
@@ -42,11 +50,27 @@ export function CartScreen({ locationId }: { locationId: string }) {
         options: l.options.map((o) => ({ groupId: o.groupId, optionId: o.optionId })),
       })),
     };
+    if (isOnline && !/^\S+@\S+\.\S+$/.test(email.trim())) {
+      setErr('Укажите email — на него придёт чек об оплате');
+      return;
+    }
+
     try {
       const order = await createOrder.mutateAsync(dto);
       clear();
       haptic('success');
+
+      if (!isOnline) {
+        navigate(`/order/${order.id}`);
+        return;
+      }
+
+      localStorage.setItem(EMAIL_KEY, email.trim());
+      // Заказ создан в статусе «ждёт оплаты». Экран заказа открываем сразу,
+      // чтобы клиент вернулся на него из браузера и увидел итог оплаты.
+      const payment = await payOrder.mutateAsync({ orderId: order.id, email: email.trim() });
       navigate(`/order/${order.id}`);
+      if (payment.confirmationUrl) openPaymentPage(payment.confirmationUrl);
     } catch (e) {
       haptic('error');
       setErr(e instanceof ApiError ? e.message : 'Не удалось оформить заказ');
@@ -55,7 +79,7 @@ export function CartScreen({ locationId }: { locationId: string }) {
 
   return (
     <div className="app">
-      <div className="kicker">Забрать на кассе</div>
+      <div className="kicker">{isOnline ? 'Оплата онлайн' : 'Забрать на кассе'}</div>
       <h2 className="h1" style={{ fontSize: 26, margin: '4px 0 10px' }}>
         Ваш заказ
       </h2>
@@ -106,6 +130,20 @@ export function CartScreen({ locationId }: { locationId: string }) {
         ))}
       </div>
 
+      {isOnline && (
+        <div className="field-box" style={{ marginTop: 16 }}>
+          <input
+            className="textin"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="Email для чека"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </div>
+      )}
+
       <div className="field-box" style={{ marginTop: 16, alignItems: 'flex-start' }}>
         <textarea
           className="textin"
@@ -136,12 +174,12 @@ export function CartScreen({ locationId }: { locationId: string }) {
 
       <div className="sticky-bottom">
         <div className="sticky-inner">
-          <button className="mainbtn" disabled={createOrder.isPending} onClick={submit}>
-            <span>{createOrder.isPending ? 'Оформляем…' : 'Заказать'}</span>
+          <button className="mainbtn" disabled={busy} onClick={submit}>
+            <span>{busy ? 'Оформляем…' : isOnline ? 'Оплатить' : 'Заказать'}</span>
             <span className="tnum">{formatMoney(total())}</span>
           </button>
           <div className="hint" style={{ textAlign: 'center', marginTop: 6 }}>
-            Оплата при получении на кассе
+            {isOnline ? 'Оплата картой или СБП, чек придёт на почту' : 'Оплата при получении на кассе'}
           </div>
         </div>
       </div>

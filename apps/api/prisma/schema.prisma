@@ -147,6 +147,9 @@ model Customer {
   id        String   @id @default(uuid())
   tgUserId  String   @unique
   name      String?
+  /// Контакты для чека 54-ФЗ при онлайн-оплате (Telegram их не отдаёт).
+  email     String?
+  phone     String?
   createdAt DateTime @default(now())
 
   orders          Order[]

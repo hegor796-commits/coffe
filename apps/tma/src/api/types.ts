@@ -48,6 +48,7 @@ export interface OrderResponse {
   id: string;
   number: string;
   status: OrderStatus;
+  paymentMode: 'offline' | 'online';
   locationId: string;
   total: number;
   items: OrderItemSnapshot[];

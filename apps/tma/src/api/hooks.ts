@@ -50,6 +50,23 @@ export function useCreateOrder() {
   });
 }
 
+export interface PayResult {
+  orderId: string;
+  paymentId: string;
+  status: string;
+  confirmationUrl: string | null;
+}
+
+/** Запрос ссылки на оплату заказа. Контакт нужен для чека 54-ФЗ. */
+export function usePayOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, email, phone }: { orderId: string; email?: string; phone?: string }) =>
+      api<PayResult>(`/v1/orders/${orderId}/pay`, { method: 'POST', body: { email, phone } }),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['order', vars.orderId] }),
+  });
+}
+
 export function useCancelOrder(orderId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({

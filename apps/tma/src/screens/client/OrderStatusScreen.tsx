@@ -1,13 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { canTransition, formatMoney, OrderEvent, OrderStatus, WsEvent } from '@coffee/shared';
-import { useCancelOrder, useOrder } from '../../api/hooks';
+import { useCancelOrder, useOrder, usePayOrder } from '../../api/hooks';
 import { getSocket, subscribeOrder } from '../../ws';
-import { haptic } from '../../telegram';
+import { haptic, openPaymentPage } from '../../telegram';
 
 const STEPS: { status: OrderStatus; label: string }[] = [
   { status: OrderStatus.Created, label: 'Оформлен' },
+  { status: OrderStatus.Paid, label: 'Оплачен' },
   { status: OrderStatus.Accepted, label: 'Принят' },
   { status: OrderStatus.Preparing, label: 'Готовится' },
   { status: OrderStatus.Ready, label: 'Готов' },
@@ -16,7 +17,7 @@ const STEPS: { status: OrderStatus; label: string }[] = [
 
 const CANCELLED_TEXT: Partial<Record<OrderStatus, string>> = {
   [OrderStatus.Rejected]: 'Заказ отклонён кофейней.',
-  [OrderStatus.AutoCancelled]: 'Заказ отменён: кофейня не приняла его вовремя.',
+  [OrderStatus.AutoCancelled]: 'Заказ отменён: он не был оплачен или кофейня не приняла его вовремя.',
   [OrderStatus.CancelledByClient]: 'Вы отменили заказ.',
 };
 
@@ -24,6 +25,8 @@ export function OrderStatusScreen() {
   const { id } = useParams<{ id: string }>();
   const { data: order } = useOrder(id);
   const cancel = useCancelOrder(id);
+  const pay = usePayOrder();
+  const [payErr, setPayErr] = useState<string | null>(null);
   const qc = useQueryClient();
   const navigate = useNavigate();
 
@@ -40,7 +43,72 @@ export function OrderStatusScreen() {
 
   if (!order) return <div className="center">Загрузка заказа…</div>;
 
+  const awaitingPayment = order.status === OrderStatus.PendingPayment;
   const cancelledText = CANCELLED_TEXT[order.status];
+
+  // Клиент мог закрыть страницу банка, не заплатив: даём вернуться к оплате.
+  // Сервер отдаёт ту же ссылку, второй платёж не создаётся.
+  const retryPayment = async () => {
+    setPayErr(null);
+    try {
+      const result = await pay.mutateAsync({ orderId: order.id });
+      if (result.confirmationUrl) openPaymentPage(result.confirmationUrl);
+      else setPayErr('Платёж уже обработан — обновите экран через пару секунд.');
+    } catch (e) {
+      haptic('error');
+      setPayErr(e instanceof Error ? e.message : 'Не удалось открыть оплату');
+    }
+  };
+
+  if (awaitingPayment) {
+    return (
+      <div className="app">
+        <div className="check-circle">₽</div>
+        <h2 style={{ fontSize: 28, fontWeight: 400, textAlign: 'center', margin: '20px 0 4px' }}>
+          Ждём оплату
+        </h2>
+        <p
+          style={{
+            fontSize: 13.5,
+            color: 'rgba(32,31,29,.65)',
+            fontStyle: 'italic',
+            textAlign: 'center',
+            margin: 0,
+          }}
+        >
+          Заказ {order.number} на {formatMoney(order.total)} зарезервирован. Кофейня начнёт
+          готовить сразу после оплаты.
+        </p>
+
+        {payErr && (
+          <div className="notice notice-danger" style={{ marginTop: 16 }}>
+            {payErr}
+          </div>
+        )}
+
+        <button
+          className="btn btn-primary btn-block"
+          style={{ marginTop: 22 }}
+          disabled={pay.isPending}
+          onClick={retryPayment}
+        >
+          {pay.isPending ? 'Открываем оплату…' : 'Перейти к оплате'}
+        </button>
+        <button
+          className="btn btn-secondary btn-block"
+          style={{ marginTop: 10 }}
+          disabled={cancel.isPending}
+          onClick={() => cancel.mutate(undefined, { onSuccess: () => haptic('warning') })}
+        >
+          {cancel.isPending ? 'Отменяем…' : 'Отменить заказ'}
+        </button>
+        <div className="hint" style={{ textAlign: 'center', marginTop: 10 }}>
+          Если оплата уже прошла, статус обновится сам в течение минуты.
+        </div>
+      </div>
+    );
+  }
+
   const currentIndex = STEPS.findIndex((s) => s.status === order.status);
   const isReady = order.status === OrderStatus.Ready;
   const isDone = order.status === OrderStatus.Completed;
