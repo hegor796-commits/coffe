@@ -250,6 +250,9 @@ function renderMenu(opts) {
     const q = query.trim().toLowerCase();
     const items = MENU.filter((p) =>
         (activeCat === 'all' || p.categoryName === activeCat) && (!q || p.name.toLowerCase().includes(q)));
+    // Доступные позиции — вверх, из стоп-листа — вниз (порядок внутри групп
+    // сохраняется: Array.sort стабилен).
+    items.sort((a, b) => Number(b.available) - Number(a.available));
     if (!items.length) { grid.innerHTML = '<div class="empty-note" style="grid-column:1/-1">Ничего не найдено</div>'; return; }
     grid.innerHTML = items.map((p, i) => {
         const out = !p.available;
