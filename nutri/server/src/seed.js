@@ -82,9 +82,10 @@ export function seedDemo() {
   const tenantId = uid();
 
   db.prepare(
-    `INSERT INTO tenants (id, slug, name, bot_token, webhook_secret, payment_mode, created_at)
-     VALUES (?, ?, ?, ?, ?, 'offline', ?)`,
-  ).run(tenantId, slug, 'Любовь-Марковь', botToken, crypto.randomBytes(16).toString('hex'), now());
+    `INSERT INTO tenants (id, slug, name, bot_token, webhook_secret, payment_mode, payment_provider_token, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(tenantId, slug, 'Любовь-Марковь', botToken, crypto.randomBytes(16).toString('hex'),
+    providerToken ? 'online' : 'offline', providerToken || null, now());
 
   if (ownerTg) {
     db.prepare('INSERT INTO staff (id, tenant_id, tg_user_id, role, name) VALUES (?,?,?,?,?)')

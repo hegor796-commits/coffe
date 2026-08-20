@@ -450,6 +450,11 @@ async function bootstrap() {
     console.log(`[server] listening on :${config.port}`);
     console.log(`[server] webDir: ${config.webDir}`);
     console.log(`[server] publicUrl: ${config.publicUrl || '(not set — webhooks disabled)'}`);
+    // Диагностика оплаты: видно ли серверу токен провайдера (сам токен не печатаем).
+    for (const t of db.prepare('SELECT slug, payment_mode, payment_provider_token FROM tenants').all()) {
+      const tok = t.payment_provider_token;
+      console.log(`[payments] ${t.slug}: mode=${t.payment_mode}, provider_token=${tok ? `set (${String(tok).split(':')[1] || '?'})` : 'MISSING'}`);
+    }
   });
 
   // Автоустановка вебхуков всем ботам (если известен внешний адрес).
