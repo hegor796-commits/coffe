@@ -562,6 +562,7 @@ function renderCart() {
             <div class="row"><span>Оплата</span><span>${PAYMENT_ONLINE ? 'картой в приложении' : 'на кассе при получении'}</span></div>
             <div class="row total"><span>Итого</span><span>${money(orderTotal())}</span></div>
         </div>
+        ${PAYMENT_ONLINE ? `<p class="pay-note">Telegram попросит e-mail — на него придёт кассовый чек.</p>` : ''}
         <div class="checkout"><button class="main-btn" onclick="checkout()">${PAYMENT_ONLINE ? 'Оплатить' : (deliverySel ? 'Оформить доставку' : 'Оформить заказ')} · ${money(orderTotal())}</button></div>`;
 }
 
@@ -603,7 +604,9 @@ async function checkoutLive() {
             toast('Обновите Telegram, чтобы оплатить заказ');
             return;
         }
+        setVerticalSwipes(true);
         tg.openInvoice(r.data.invoiceLink, (status) => {
+            setVerticalSwipes(false);
             if (status === 'paid') {
                 clearCart();
                 updateCartBadge(); renderCart();
@@ -860,6 +863,16 @@ function toast(msg) {
 // ============================================================
 //  Интеграция с Telegram + запуск
 // ============================================================
+// Свайпы отключены ради прокрутки внутри приложения, но платёжная шторка
+// Telegram открывается поверх нас и на Android с этим конфликтует: форма
+// карты уезжает под клавиатуру. На время оплаты возвращаем жесты клиенту.
+function setVerticalSwipes(enabled) {
+    if (!tg) return;
+    try {
+        if (enabled) { if (tg.enableVerticalSwipes) tg.enableVerticalSwipes(); }
+        else if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+    } catch { /* старые клиенты этих методов не знают */ }
+}
 function initTelegramShell() {
     if (!tg) return;
     try {
@@ -867,7 +880,7 @@ function initTelegramShell() {
         tg.expand();
         // Отключаем «свайп вниз = свернуть» — иначе Telegram перехватывает
         // вертикальные жесты и внутри приложения ничего не прокручивается.
-        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        setVerticalSwipes(false);
         if (tg.setBackgroundColor) tg.setBackgroundColor('#FBF6EE');
         if (tg.setHeaderColor) tg.setHeaderColor('#FBF6EE');
         document.body.classList.add('in-telegram');

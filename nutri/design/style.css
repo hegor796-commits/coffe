@@ -168,6 +168,7 @@ body.in-telegram .close-btn { display: none; }
 .summary .row { display: flex; justify-content: space-between; font-size: 13px; color: var(--ink-soft); font-weight: 600; margin-bottom: 8px; }
 .summary .row.total { color: var(--ink); font-size: 18px; font-weight: 800; margin: 10px 0 0; padding-top: 11px; border-top: 1px solid var(--line-2); }
 .summary .row.total span:last-child { font-variant-numeric: tabular-nums; }
+.pay-note { margin: 10px 2px 0; font-size: 12px; line-height: 1.45; color: var(--ink-soft); }
 .checkout { margin-top: 16px; }
 
 /* ---- Заказы / история ---- */
