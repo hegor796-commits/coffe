@@ -4,11 +4,23 @@ import { dirname, join, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Railway показывает домен без схемы, и его так и копируют в переменную.
+// Голый адрес ломает и вебхуки, и ссылки на мини-апп в кнопках бота, поэтому
+// достраиваем https:// сами.
+function externalUrl(value) {
+  const v = String(value || '').trim().replace(/\/+$/, '');
+  if (!v) return '';
+  return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+}
+
 export const config = {
   port: Number(process.env.PORT || 3000),
 
   // Внешний HTTPS-адрес сервиса (для вебхуков ботов). На Railway — публичный домен.
-  publicUrl: (process.env.PUBLIC_URL || '').replace(/\/$/, ''),
+  publicUrl: externalUrl(process.env.PUBLIC_URL),
+
+  // Ссылка на сам мини-апп (кнопки ботов, приглашения). По умолчанию — этот же сервис.
+  webAppBase: externalUrl(process.env.WEB_APP_BASE || process.env.PUBLIC_URL),
 
   // Каталог данных: сюда кладём SQLite-файл. На Railway монтируем Volume сюда.
   dataDir: resolve(process.env.DATA_DIR || join(__dirname, '..', 'data')),

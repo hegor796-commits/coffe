@@ -14,7 +14,7 @@ import { validateInitData, getMe, setWebhook, sendMessage, webAppButton, createI
 import { seedDemo } from './seed.js';
 
 const uid = () => crypto.randomUUID();
-const webAppBase = (process.env.WEB_APP_BASE || config.publicUrl).replace(/\/$/, '');
+const webAppBase = config.webAppBase;
 
 // ---------- HTTP helpers ----------
 function cors(res) {
@@ -516,6 +516,7 @@ async function bootstrap() {
     console.log(`[server] webDir: ${config.webDir}`);
     console.log(`[server] dataDir: ${config.dataDir}`);
     console.log(`[server] publicUrl: ${config.publicUrl || '(not set — webhooks disabled)'}`);
+    console.log(`[server] webAppBase: ${webAppBase || '(not set)'}`);
     // Диагностика оплаты: видно ли серверу токен провайдера (сам токен не печатаем).
     for (const t of db.prepare('SELECT slug, payment_mode, payment_provider_token FROM tenants').all()) {
       const tok = t.payment_provider_token;
