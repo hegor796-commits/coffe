@@ -46,12 +46,65 @@ function insertProduct(tenantId, catId, name, price, sort, groupIds = [], descri
   return pid;
 }
 
+// Фото товаров: имя позиции в меню -> файл в design/img.
+// Список применяется при каждом старте, поэтому новые снимки подхватываются
+// без пересоздания базы — достаточно добавить строку и залить картинку.
 const PHOTO_MAP = [
+  // Кофе
+  ['Американо',                      'img/americano.jpg'],
+  ['Капучино',                       'img/cappuccino.jpg'],
+  ['Латте',                          'img/latte.jpg'],
+  ['Раф',                            'img/raf.jpg'],
+  // Десерты
   ['Капкейк',                        'img/kapkeik.jpg'],
   ['Наполеон пирожное',              'img/napoleon.jpg'],
   ['Пирожное сердце малина',         'img/serdce-malina.jpg'],
-  ['Медовик с малиной ПП пирожное',  'img/medovik.jpg'],
-  ['Медовик гречишный ПП пирожное',  'img/medovik.jpg'],
+  // ПП-десерты без сахара
+  ['Трайфл Фисташка–малина',                 'img/trifle-pistachio-raspberry.jpg'],
+  ['Трайфл Вишня–шоколад',                   'img/trifle-cherry-chocolate.jpg'],
+  ['Трайфл Кофейный',                        'img/trifle-coffee.jpg'],
+  ['Трайфл Шоколадно–ореховый',              'img/trifle-chocolate-nut.jpg'],
+  ['Муссовый чизкейк Кофейно–шоколадный',    'img/cheesecake-coffee-chocolate.jpg'],
+  ['Муссовый чизкейк Арахисовый',            'img/cheesecake-peanut.jpg'],
+  ['Муссовый чизкейк Фисташковый',           'img/cheesecake-pistachio.jpg'],
+  ['Муссовый чизкейк Манго–маракуйя',        'img/cheesecake-mango-passion.jpg'],
+  ['Муссовый чизкейк Яблоко–брусника',       'img/cheesecake-apple-cowberry.jpg'],
+  ['Муссовый чизкейк Лимонный',              'img/cheesecake-lemon.jpg'],
+  ['Муссовый чизкейк Голубика–ежевика',      'img/cheesecake-blueberry-blackberry.jpg'],
+  ['Муссовый чизкейк Груша–кокос',           'img/cheesecake-pear-coconut.jpg'],
+  ['Муссовый чизкейк Пряный апельсин',       'img/cheesecake-spiced-orange.jpg'],
+  ['Муссовый чизкейк Миндальный',            'img/cheesecake-almond.jpg'],
+  ['Мусскейк «Малиновый» с гранатом',        'img/mousscake-raspberry-pomegranate.jpg'],
+  ['Трюфельное ПП пирожное',                 'img/truffle_cake.jpg'],
+  ['Медовик с малиной ПП пирожное',          'img/medovik-raspberry.jpg'],
+  ['Медовик гречишный ПП пирожное',          'img/medovik-buckwheat.jpg'],
+  ['Чизкейк «Сан-Себастьян»',                'img/cheesecake-san-sebastian.jpg'],
+  // Веган
+  ['Трайфл Персик–маракуйя',                 'img/trifle-peach-passion.jpg'],
+  ['Кешьюкейк с красной смородиной',         'img/cashewcake-redcurrant.jpg'],
+  ['Кешьюкейк с чёрной смородиной',          'img/cashewcake-blackcurrant.jpg'],
+  // Вафли
+  ['Вафля банан',                            'img/waffle-banana.jpg'],
+  ['Вафля ваниль',                           'img/waffle-vanilla.jpg'],
+  ['Вафля зефир-апельсин',                   'img/waffle-orange-marshmallow.jpg'],
+  ['Вафля зефир-вишня',                      'img/waffle-cherry-marshmallow.jpg'],
+  ['Вафля карамель арахис изюм',             'img/waffle-caramel-peanut-raisin.jpg'],
+  ['Вафля карамель',                         'img/waffle-caramel.jpg'],
+  ['Вафля кокос-пломбир',                    'img/waffle-coconut.jpg'],
+  ['Вафля кофе с молоком',                   'img/waffle-coffee-milk.jpg'],
+  ['Вафля лимон с шоколадной крошкой',       'img/waffle-lemon-chocolate.jpg'],
+  ['Вафля птичье молоко в шоколадной глазури', 'img/waffle-birdsmilk-glaze.jpg'],
+  ['Вафля птичье молоко',                    'img/waffle-birdsmilk.jpg'],
+  ['Вафля суфле в белом шоколаде',           'img/waffle-souffle-white.jpg'],
+  ['Вафля суфле в молочном шоколаде',        'img/waffle-souffle-milk.jpg'],
+  ['Вафля шоколад-апельсин',                 'img/waffle-chocolate-orange.jpg'],
+  // Сладости к кофе
+  ['Ириска классическая',                    'img/toffee-classic.jpg'],
+  ['Ириска с бланшированным миндалём',       'img/toffee-almond.jpg'],
+  ['Ириска с грецким орехом',                'img/toffee-walnut.jpg'],
+  ['Ириска с кешью',                         'img/toffee-cashew.jpg'],
+  ['Ириска с розовой гималайской солью',     'img/toffee-himalayan-salt.jpg'],
+  ['Ириска шоколадная',                      'img/toffee-chocolate.jpg'],
 ];
 
 function applyPhotoUpdates(tenantId) {
@@ -364,8 +417,8 @@ export function seedDemo() {
   insertProduct(tenantId, nsd, 'Муссовый чизкейк Миндальный', 299, s++, []);
   insertProduct(tenantId, nsd, 'Мусскейк «Малиновый» с гранатом', 299, s++, []);
   insertProduct(tenantId, nsd, 'Трюфельное ПП пирожное', 299, s++, []);
-  insertProduct(tenantId, nsd, 'Медовик с малиной ПП пирожное', 299, s++, [], '', 'img/medovik.jpg');
-  insertProduct(tenantId, nsd, 'Медовик гречишный ПП пирожное', 299, s++, [], '', 'img/medovik.jpg');
+  insertProduct(tenantId, nsd, 'Медовик с малиной ПП пирожное', 299, s++, []);
+  insertProduct(tenantId, nsd, 'Медовик гречишный ПП пирожное', 299, s++, []);
   insertProduct(tenantId, nsd, 'Чизкейк «Сан-Себастьян»', 299, s++, []);
 
   // === Десерты веган ===
@@ -409,5 +462,7 @@ export function seedDemo() {
   insertProduct(tenantId, sm, 'Печенье кукис шоколадное с маршмеллоу', 180, s++, []);
   insertProduct(tenantId, sm, 'Печенье кукис с грецким орехом', 180, s++, []);
 
+  // Фото — единым списком, чтобы новая база и существующая получали одно и то же.
+  applyPhotoUpdates(tenantId);
   return tenantId;
 }
