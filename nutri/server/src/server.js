@@ -514,12 +514,21 @@ async function bootstrap() {
   server.listen(config.port, () => {
     console.log(`[server] listening on :${config.port}`);
     console.log(`[server] webDir: ${config.webDir}`);
+    console.log(`[server] dataDir: ${config.dataDir}`);
     console.log(`[server] publicUrl: ${config.publicUrl || '(not set — webhooks disabled)'}`);
     // Диагностика оплаты: видно ли серверу токен провайдера (сам токен не печатаем).
     for (const t of db.prepare('SELECT slug, payment_mode, payment_provider_token FROM tenants').all()) {
       const tok = t.payment_provider_token;
       console.log(`[payments] ${t.slug}: mode=${t.payment_mode}, provider_token=${tok ? `set (${String(tok).split(':')[1] || '?'})` : 'MISSING'}`);
     }
+    // Кто может работать за стойкой. Пусто — значит SEED_*_TG_ID не заданы и
+    // ленту бариста никто не увидит.
+    const staff = db.prepare("SELECT role, tg_user_id FROM staff WHERE active = 1 ORDER BY role").all();
+    console.log(staff.length
+      ? `[staff] ${staff.map((s) => `${s.role}=${s.tg_user_id}`).join(', ')}`
+      : '[staff] НИКОГО — задайте SEED_OWNER_TG_ID / SEED_BARISTA_TG_ID');
+    const orders = db.prepare('SELECT COUNT(*) n FROM orders').get().n;
+    console.log(`[orders] в базе заказов: ${orders}`);
   });
 
   // Брошенные счета гасим и в фоне: клиент может больше не открыть приложение,

@@ -112,6 +112,25 @@ function applyPhotoUpdates(tenantId) {
   for (const [name, url] of PHOTO_MAP) stmt.run(url, tenantId, name);
 }
 
+/**
+ * Владелец и бариста из окружения — применяем при каждом старте, а не только
+ * при создании кофейни. Иначе переменную, добавленную позже, никто не увидит,
+ * и после пересоздания базы остаться без доступа к ленте проще простого.
+ */
+function applyStaffFromEnv(tenantId) {
+  const roles = [
+    [process.env.SEED_OWNER_TG_ID, 'owner', 'Владелец'],
+    [process.env.SEED_BARISTA_TG_ID, 'barista', 'Бариста'],
+  ];
+  for (const [tgId, role, name] of roles) {
+    if (!tgId) continue;
+    db.prepare(
+      `INSERT INTO staff (id, tenant_id, tg_user_id, role, name) VALUES (?,?,?,?,?)
+       ON CONFLICT(tenant_id, tg_user_id) DO UPDATE SET role = excluded.role, active = 1`,
+    ).run(uid(), tenantId, String(tgId).trim(), role, name);
+  }
+}
+
 export function seedDemo() {
   const slug = 'lubov';
   const botToken = process.env.DEMO_BOT_TOKEN || '';
@@ -127,11 +146,10 @@ export function seedDemo() {
       .run(providerToken || null, providerToken ? 'online' : 'offline', slug);
     // Обновляем photo_url для всех продуктов у которых появилось фото.
     applyPhotoUpdates(existing.id);
+    applyStaffFromEnv(existing.id);
     return existing.id;
   }
 
-  const ownerTg = process.env.SEED_OWNER_TG_ID || '';
-  const baristaTg = process.env.SEED_BARISTA_TG_ID || '';
   const tenantId = uid();
 
   db.prepare(
@@ -140,14 +158,7 @@ export function seedDemo() {
   ).run(tenantId, slug, 'Любовь-Марковь', botToken, crypto.randomBytes(16).toString('hex'),
     providerToken ? 'online' : 'offline', providerToken || null, now());
 
-  if (ownerTg) {
-    db.prepare('INSERT INTO staff (id, tenant_id, tg_user_id, role, name) VALUES (?,?,?,?,?)')
-      .run(uid(), tenantId, String(ownerTg), 'owner', 'Владелец');
-  }
-  if (baristaTg) {
-    db.prepare('INSERT INTO staff (id, tenant_id, tg_user_id, role, name) VALUES (?,?,?,?,?)')
-      .run(uid(), tenantId, String(baristaTg), 'barista', 'Бариста');
-  }
+  applyStaffFromEnv(tenantId);
 
   // Категории
   const catIds = {};
