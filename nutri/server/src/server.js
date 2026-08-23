@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { join, normalize, extname } from 'node:path';
 import { config } from './config.js';
-import { db, now, nextOrderNumber } from './db.js';
+import { db, now, nextOrderNumber, expirePendingOrders, PENDING_TTL_MIN } from './db.js';
 import {
   roleOf, buildMenu, categoriesOf, priceOrder, nextStatus,
   STATUS_LABEL, STAFF_ROLES, ADMIN_ROLES, ACTIVE_STATUSES,
@@ -64,6 +64,23 @@ function orderPublic(o) {
     items: JSON.parse(o.items_json), createdAt: o.created_at, updatedAt: o.updated_at,
   };
 }
+/**
+ * Отпечаток содержимого заказа: тот же клиент + те же позиции + тот же способ
+ * получения дают тот же ключ. Позиции сортируем — порядок в корзине не важен.
+ */
+function orderFingerprint(tgUserId, fulfillment, d, items) {
+  const lines = items
+    .map((it) => `${it.productId}|${it.mods}|${it.qty}|${it.unit}`)
+    .sort()
+    .join(';');
+  const addr = fulfillment === 'delivery'
+    ? `${String(d.entrance || '').trim()}/${String(d.floor || '').trim()}/${String(d.apt || '').trim()}`
+    : '';
+  return crypto.createHash('sha256')
+    .update(`${tgUserId}\n${fulfillment}\n${addr}\n${lines}`)
+    .digest('hex');
+}
+
 function orderStaff(o) {
   return {
     ...orderPublic(o),
@@ -191,22 +208,43 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     // Наценка за доставку добавляется к сумме заказа (самовывоз — бесплатно).
     const deliveryFee = fulfillment === 'delivery' ? (tenant.delivery_fee_rub ?? 50) : 0;
     const orderTotal = priced.total + deliveryFee;
-    const id = uid();
-    const number = nextOrderNumber(tenant.id);
     const ts = now();
     const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Гость';
     // Онлайн-оплата — если у кофейни настроен провайдер. Иначе оплата на кассе.
     const online = tenant.payment_mode === 'online' && !!tenant.payment_provider_token;
-    const payStatus = online ? 'pending' : 'none';
-    db.prepare(
-      `INSERT INTO orders (id, tenant_id, number, tg_user_id, customer_name, status, fulfillment,
-        addr_entrance, addr_floor, addr_apt, total_rub, payment_status, items_json, history_json, created_at, updated_at)
-       VALUES (?,?,?,?,?,'created',?,?,?,?,?,?,?,?,?,?)`,
-    ).run(id, tenant.id, number, String(user.id), name, fulfillment,
-      d.entrance || null, d.floor || null, d.apt || null, orderTotal, payStatus,
-      JSON.stringify(priced.items), JSON.stringify([{ status: 'created', at: ts }]), ts, ts);
 
-    const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    // Прежде чем заводить заказ — гасим брошенные счета, чтобы они не мешали
+    // повторить тот же заказ и не висели в истории клиента.
+    expirePendingOrders();
+
+    // Отпечаток содержимого: тот же набор позиций + тот же способ получения.
+    const idemKey = orderFingerprint(String(user.id), fulfillment, d, priced.items);
+
+    // Повторный клик «Оплатить» (двойное нажатие, возврат после отмены окна
+    // оплаты) не должен плодить заказы: переиспользуем ещё живой счёт.
+    let o = null;
+    if (online) {
+      o = db.prepare(
+        `SELECT * FROM orders WHERE tenant_id = ? AND tg_user_id = ? AND idem_key = ?
+           AND payment_status = 'pending' AND total_rub = ?
+         ORDER BY created_at DESC LIMIT 1`,
+      ).get(tenant.id, String(user.id), idemKey, orderTotal);
+    }
+
+    if (!o) {
+      const id = uid();
+      const number = nextOrderNumber(tenant.id);
+      db.prepare(
+        `INSERT INTO orders (id, tenant_id, number, tg_user_id, customer_name, status, fulfillment,
+          addr_entrance, addr_floor, addr_apt, total_rub, payment_status, idem_key, items_json, history_json, created_at, updated_at)
+         VALUES (?,?,?,?,?,'created',?,?,?,?,?,?,?,?,?,?,?)`,
+      ).run(id, tenant.id, number, String(user.id), name, fulfillment,
+        d.entrance || null, d.floor || null, d.apt || null, orderTotal, online ? 'pending' : 'none', idemKey,
+        JSON.stringify(priced.items), JSON.stringify([{ status: 'created', at: ts }]), ts, ts);
+      o = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    }
+    const number = o.number;
+    const id = o.id;
 
     if (online) {
       // Чек 54-ФЗ для боевой ЮKassa: позиция на каждый товар + доставка.
@@ -252,18 +290,28 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     return json(res, 201, { order: orderPublic(o) });
   }
 
-  // Клиент: свои заказы.
+  // Клиент: свои заказы. Неоплаченные счета (pending) и сгоревшие (expired)
+  // в историю не попадают — иначе брошенные попытки оплаты копятся списком.
   if (path === '/api/orders/mine' && method === 'GET') {
-    const rows = db.prepare('SELECT * FROM orders WHERE tenant_id = ? AND tg_user_id = ? ORDER BY created_at DESC LIMIT 50')
-      .all(tenant.id, String(user.id));
+    expirePendingOrders();
+    const rows = db.prepare(
+      `SELECT * FROM orders WHERE tenant_id = ? AND tg_user_id = ?
+         AND payment_status NOT IN ('pending','expired')
+       ORDER BY created_at DESC LIMIT 50`,
+    ).all(tenant.id, String(user.id));
     return json(res, 200, { orders: rows.map(orderPublic) });
   }
 
   // Персонал: лента заказов (активные + недавний архив).
   if (path === '/api/staff/orders' && method === 'GET') {
     if (!STAFF_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
-    // Неоплаченные онлайн-заказы (payment_status='pending') в ленту не попадают.
-    const rows = db.prepare("SELECT * FROM orders WHERE tenant_id = ? AND payment_status != 'pending' ORDER BY created_at DESC LIMIT 100").all(tenant.id);
+    // Неоплаченные онлайн-заказы (pending) и брошенные счета (expired) в ленту
+    // не попадают — бариста видит только то, за что уже заплатили.
+    expirePendingOrders();
+    const rows = db.prepare(
+      `SELECT * FROM orders WHERE tenant_id = ? AND payment_status NOT IN ('pending','expired')
+       ORDER BY created_at DESC LIMIT 100`,
+    ).all(tenant.id);
     return json(res, 200, {
       active: rows.filter((o) => ACTIVE_STATUSES.includes(o.status)).map(orderStaff),
       archive: rows.filter((o) => !ACTIVE_STATUSES.includes(o.status)).slice(0, 30).map(orderStaff),
@@ -312,8 +360,11 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
   if (path === '/api/staff/summary' && method === 'GET') {
     if (!ADMIN_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
     const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
-    const rows = db.prepare('SELECT total_rub, status, created_at FROM orders WHERE tenant_id = ? AND created_at >= ?')
-      .all(tenant.id, dayStart.getTime());
+    // Неоплаченные счета в выручку не идут — считаем только состоявшиеся заказы.
+    const rows = db.prepare(
+      `SELECT total_rub, status, created_at FROM orders
+        WHERE tenant_id = ? AND created_at >= ? AND payment_status NOT IN ('pending','expired')`,
+    ).all(tenant.id, dayStart.getTime());
     const CANCELLED = new Set(['rejected', 'auto_cancelled', 'cancelled_by_client']);
     const counted = rows.filter((r) => !CANCELLED.has(r.status));
     const revenue = counted.reduce((s, r) => s + r.total_rub, 0);
@@ -331,11 +382,18 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     const since = Number(new URL(req.url, 'http://x').searchParams.get('since') || 0);
     let rows;
     if (STAFF_ROLES.includes(role)) {
-      rows = db.prepare('SELECT * FROM orders WHERE tenant_id = ? AND updated_at > ? ORDER BY updated_at').all(tenant.id, since);
+      rows = db.prepare(
+        `SELECT * FROM orders WHERE tenant_id = ? AND updated_at > ?
+           AND payment_status NOT IN ('pending','expired')
+         ORDER BY updated_at`,
+      ).all(tenant.id, since);
       return json(res, 200, { serverTime: now(), orders: rows.map(orderStaff) });
     }
-    rows = db.prepare('SELECT * FROM orders WHERE tenant_id = ? AND tg_user_id = ? AND updated_at > ? ORDER BY updated_at')
-      .all(tenant.id, String(user.id), since);
+    rows = db.prepare(
+      `SELECT * FROM orders WHERE tenant_id = ? AND tg_user_id = ? AND updated_at > ?
+         AND payment_status NOT IN ('pending','expired')
+       ORDER BY updated_at`,
+    ).all(tenant.id, String(user.id), since);
     return json(res, 200, { serverTime: now(), orders: rows.map(orderPublic) });
   }
 
@@ -413,7 +471,11 @@ async function handleBotUpdate(tenant, update) {
     const orderId = String(q.invoice_payload || '').startsWith('order:') ? q.invoice_payload.slice(6) : null;
     const o = orderId ? db.prepare('SELECT * FROM orders WHERE id = ? AND tenant_id = ?').get(orderId, tenant.id) : null;
     const ok = !!o && o.payment_status === 'pending' && o.total_rub * 100 === q.total_amount;
-    await answerPreCheckoutQuery(tenant.bot_token, q.id, ok, ok ? undefined : 'Заказ не найден или уже оплачен');
+    const why = !o ? 'Заказ не найден'
+      : o.payment_status === 'paid' ? 'Заказ уже оплачен'
+      : o.payment_status === 'expired' ? `Счёт устарел (действует ${PENDING_TTL_MIN} мин). Оформите заказ заново`
+      : 'Сумма заказа изменилась. Оформите заказ заново';
+    await answerPreCheckoutQuery(tenant.bot_token, q.id, ok, ok ? undefined : why);
     return;
   }
 
@@ -426,7 +488,10 @@ async function handleBotUpdate(tenant, update) {
     const orderId = payload.startsWith('order:') ? payload.slice(6) : null;
     const o = orderId ? db.prepare('SELECT * FROM orders WHERE id = ? AND tenant_id = ?').get(orderId, tenant.id) : null;
     if (o && o.payment_status !== 'paid') {
-      db.prepare("UPDATE orders SET payment_status = 'paid', updated_at = ? WHERE id = ?").run(now(), o.id);
+      // Если счёт успел сгореть между pre-checkout и списанием — деньги уже
+      // взяты, поэтому возвращаем заказ в работу, а не оставляем отменённым.
+      db.prepare("UPDATE orders SET payment_status = 'paid', status = 'created', updated_at = ? WHERE id = ?")
+        .run(now(), o.id);
       const paid = db.prepare('SELECT * FROM orders WHERE id = ?').get(o.id);
       notifyStaffNewOrder(tenant, paid).catch((e) => console.error('notify staff', e));
       await sendMessage(tenant.bot_token, msg.chat.id, `💳 Оплата получена. Заказ ${o.number} принят в работу!`);
@@ -456,6 +521,15 @@ async function bootstrap() {
       console.log(`[payments] ${t.slug}: mode=${t.payment_mode}, provider_token=${tok ? `set (${String(tok).split(':')[1] || '?'})` : 'MISSING'}`);
     }
   });
+
+  // Брошенные счета гасим и в фоне: клиент может больше не открыть приложение,
+  // а заказ не должен вечно висеть неоплаченным.
+  const sweep = () => {
+    const n = expirePendingOrders();
+    if (n) console.log(`[orders] погашено брошенных счетов: ${n}`);
+  };
+  sweep();
+  setInterval(sweep, 5 * 60_000).unref();
 
   // Автоустановка вебхуков всем ботам (если известен внешний адрес).
   if (config.autoSetWebhooks && config.publicUrl) {

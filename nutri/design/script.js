@@ -150,7 +150,7 @@ function demoProducts() {
 let MENU = [];                 // текущее меню (демо-сид либо ответ бэкенда)
 let activeCat = 'all';         // 'all' либо имя категории
 let query = '';
-const cart = {};                 // key -> { productId, name, catKey, mods, unit, qty, optionIds:[] }
+let cart = {};                   // key -> { productId, name, catKey, mods, unit, qty, optionIds:[] }
 let fulfillment = 'pickup';      // 'pickup' | 'delivery'
 let DELIVERY_FEE = 50;           // наценка за доставку (₽), приходит из bootstrap
 let PAYMENT_ONLINE = false;      // true — оплата картой в приложении (из bootstrap)
@@ -158,8 +158,83 @@ const delivery = { entrance: '', floor: '', apt: '' };
 let baristaFilter = 'active';
 
 function findProduct(id) { return MENU.find((p) => p.id === id); }
-function setFulfil(mode) { fulfillment = mode; renderCart(); }
-function setDeliveryField(field, val) { delivery[field] = val; }
+function setFulfil(mode) { fulfillment = mode; saveCart(); renderCart(); }
+function setDeliveryField(field, val) { delivery[field] = val; saveCart(); }
+
+// ============================================================
+//  Корзина переживает закрытие мини-приложения
+// ============================================================
+// Telegram выгружает WebView при сворачивании, поэтому корзина в памяти
+// пропадала вместе с ней. Держим её в localStorage: ключ на кофейню и на
+// пользователя, чтобы на общем устройстве заказы не смешивались.
+let CART_KEY = 'lm:cart:v1:anon';
+const CART_TTL_MS = 12 * 60 * 60 * 1000;   // сутки спустя корзина уже неактуальна
+
+function storage() {
+    // Приватный режим и старые WebView умеют бросать на самом обращении.
+    try { return window.localStorage; } catch { return null; }
+}
+function saveCart() {
+    const s = storage();
+    if (!s) return;
+    try {
+        s.setItem(CART_KEY, JSON.stringify({
+            at: Date.now(),
+            fulfillment,
+            delivery,
+            lines: Object.values(cart).map((v) => ({ productId: v.productId, optionIds: v.optionIds, qty: v.qty })),
+        }));
+    } catch { /* переполнение квоты — корзина просто не переживёт перезапуск */ }
+}
+function clearCart() {
+    cart = {};
+    fulfillment = 'pickup';
+    delivery.entrance = delivery.floor = delivery.apt = '';
+    const s = storage();
+    if (s) { try { s.removeItem(CART_KEY); } catch { /* не критично */ } }
+}
+// Восстановление собираем заново по актуальному меню: товар мог уехать в
+// стоп-лист или сменить цену, пока приложение было закрыто.
+function selectionFromOptionIds(product, optionIds) {
+    const ids = new Set(optionIds || []);
+    const sel = {};
+    for (const g of product.groups) {
+        const opt = g.options.find((o) => ids.has(o.id));
+        if (opt) sel[g.id] = opt.id;
+    }
+    return sel;
+}
+function restoreCart() {
+    const s = storage();
+    if (!s) return;
+    let saved;
+    try { saved = JSON.parse(s.getItem(CART_KEY) || 'null'); } catch { saved = null; }
+    if (!saved || !Array.isArray(saved.lines)) return;
+    if (!saved.at || Date.now() - saved.at > CART_TTL_MS) { try { s.removeItem(CART_KEY); } catch {} return; }
+
+    let dropped = 0;
+    for (const line of saved.lines) {
+        const product = findProduct(line.productId);
+        if (!product || product.available === false) { dropped++; continue; }
+        const selected = selectionFromOptionIds(product, line.optionIds);
+        const qty = Math.max(1, Math.min(50, Number(line.qty) || 1));
+        const key = cartKey(product.id, selected);
+        // Цену пересчитываем от текущего меню — иначе на кассе будет расхождение.
+        cart[key] = {
+            productId: product.id, name: product.name, catKey: product.catKey,
+            mods: modsText(product, selected), unit: unitPrice(product, selected), qty,
+            optionIds: Object.values(selected),
+        };
+    }
+    if (saved.fulfillment === 'delivery') fulfillment = 'delivery';
+    if (saved.delivery) {
+        delivery.entrance = saved.delivery.entrance || '';
+        delivery.floor = saved.delivery.floor || '';
+        delivery.apt = saved.delivery.apt || '';
+    }
+    if (dropped) toast(dropped === 1 ? 'Одна позиция больше недоступна' : `${dropped} позиции больше недоступны`);
+    saveCart();
+}
 
 const ACTIVE_STATUSES = ['created', 'accepted', 'preparing', 'ready'];
 const STATUS_CLASS = {
@@ -402,6 +477,7 @@ function addLine(product, selected, qty) {
         mods: modsText(product, selected), unit: unitPrice(product, selected), qty,
         optionIds: Object.values(selected),
     };
+    saveCart();
     updateCartBadge();
     renderCart();
 }
@@ -409,6 +485,7 @@ function changeQty(key, d) {
     if (!cart[key]) return;
     cart[key].qty += d;
     if (cart[key].qty <= 0) delete cart[key];
+    saveCart();
     updateCartBadge(); renderCart();
 }
 function cartCount() { return Object.values(cart).reduce((s, v) => s + v.qty, 0); }
@@ -488,13 +565,25 @@ function renderCart() {
         <div class="checkout"><button class="main-btn" onclick="checkout()">${PAYMENT_ONLINE ? 'Оплатить' : (deliverySel ? 'Оформить доставку' : 'Оформить заказ')} · ${money(orderTotal())}</button></div>`;
 }
 
+// Пока счёт создаётся, кнопка заблокирована: второй клик по «Оплатить»
+// раньше заводил ещё один заказ и съедал следующий номер.
+let checkoutBusy = false;
 async function checkout() {
+    if (checkoutBusy) return;
     if (!cartCount()) return;
     if (fulfillment === 'delivery' && (!delivery.entrance.trim() || !delivery.floor.trim() || !delivery.apt.trim())) {
         toast('Укажите подъезд, этаж и апартаменты');
         return;
     }
-    if (LIVE) await checkoutLive(); else checkoutDemo();
+    checkoutBusy = true;
+    const btn = document.querySelector('#view-client-cart .checkout .main-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Оформляем…'; }
+    try {
+        if (LIVE) await checkoutLive(); else checkoutDemo();
+    } finally {
+        checkoutBusy = false;
+        if (btn && btn.isConnected) renderCart();
+    }
 }
 async function checkoutLive() {
     const lines = Object.values(cart).map((v) => ({ productId: v.productId, optionIds: v.optionIds, qty: v.qty }));
@@ -516,8 +605,7 @@ async function checkoutLive() {
         }
         tg.openInvoice(r.data.invoiceLink, (status) => {
             if (status === 'paid') {
-                Object.keys(cart).forEach((k) => delete cart[k]);
-                fulfillment = 'pickup'; delivery.entrance = delivery.floor = delivery.apt = '';
+                clearCart();
                 updateCartBadge(); renderCart();
                 toast('Оплачено ✓ Заказ ' + number + ' принят');
                 loadClientOrders().then(() => switchTab('client', 'orders'));
@@ -530,8 +618,7 @@ async function checkoutLive() {
         return;
     }
     // Оффлайн-оплата: заказ сразу оформлен.
-    Object.keys(cart).forEach((k) => delete cart[k]);
-    fulfillment = 'pickup'; delivery.entrance = delivery.floor = delivery.apt = '';
+    clearCart();
     updateCartBadge(); renderCart();
     toast('Заказ ' + number + ' оформлен ✓');
     switchTab('client', 'orders');
@@ -548,8 +635,7 @@ function checkoutDemo() {
     };
     clientOrders.unshift(order);
     baristaOrders.unshift({ ...order, ts: fmtTime(ts) });
-    Object.keys(cart).forEach((k) => delete cart[k]);
-    fulfillment = 'pickup'; delivery.entrance = delivery.floor = delivery.apt = '';
+    clearCart();
     updateCartBadge(); renderCart(); renderClientOrders(); renderBarista();
     toast('Заказ ' + number + ' оформлен ✓');
     switchTab('client', 'orders');
@@ -812,6 +898,7 @@ async function boot() {
         const r = await api('/api/bootstrap');
         if (r.ok) {
             LIVE = true; ROLE = r.data.role;
+            if (r.data.user && r.data.user.id) CART_KEY = `lm:cart:v1:${TENANT}:${r.data.user.id}`;
             if (r.data.tenant && Number.isFinite(r.data.tenant.deliveryFee)) DELIVERY_FEE = r.data.tenant.deliveryFee;
             if (r.data.tenant) PAYMENT_ONLINE = r.data.tenant.paymentMode === 'online';
             const catNameById = new Map(r.data.categories.map((c) => [c.id, c.name]));
@@ -837,6 +924,9 @@ async function boot() {
         MENU = demoProducts();
         CATEGORIES_LIST = [...new Set(MENU.map((p) => p.categoryName))];
     }
+
+    // Корзину поднимаем уже по загруженному меню — цены и стоп-лист свежие.
+    restoreCart();
 
     // Рендерим только клиентское меню. Стоп-лист и меню владельца строятся
     // лениво при открытии своих вкладок (switchTab) — не грузим старт зря.

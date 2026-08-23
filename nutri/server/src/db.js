@@ -100,7 +100,8 @@ CREATE TABLE IF NOT EXISTS orders (
   addr_floor    TEXT,
   addr_apt      TEXT,
   total_rub     INTEGER NOT NULL,
-  payment_status TEXT NOT NULL DEFAULT 'none',      -- none (оффлайн) | pending | paid
+  payment_status TEXT NOT NULL DEFAULT 'none',      -- none (оффлайн) | pending | paid | expired
+  idem_key      TEXT,                              -- отпечаток содержимого: защита от дублей
   items_json    TEXT NOT NULL,                     -- снапшот позиций
   history_json  TEXT NOT NULL DEFAULT '[]',
   created_at    INTEGER NOT NULL,
@@ -109,6 +110,7 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(tenant_id, tg_user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_orders_updated ON orders(tenant_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_orders_pending ON orders(tenant_id, payment_status, created_at);
 
 CREATE TABLE IF NOT EXISTS counters (
   tenant_id TEXT PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
@@ -122,6 +124,8 @@ try { db.exec('ALTER TABLE products ADD COLUMN description TEXT'); } catch {}
 try { db.exec('ALTER TABLE tenants ADD COLUMN delivery_fee_rub INTEGER NOT NULL DEFAULT 50'); } catch {}
 try { db.exec('ALTER TABLE tenants ADD COLUMN payment_provider_token TEXT'); } catch {}
 try { db.exec("ALTER TABLE orders ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'none'"); } catch {}
+try { db.exec('ALTER TABLE orders ADD COLUMN idem_key TEXT'); } catch {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_orders_pending ON orders(tenant_id, payment_status, created_at)'); } catch {}
 
 export function now() {
   return Date.now();
@@ -135,4 +139,21 @@ export function nextOrderNumber(tenantId) {
   ).run(tenantId);
   const { order_seq } = db.prepare('SELECT order_seq FROM counters WHERE tenant_id = ?').get(tenantId);
   return 'А-' + order_seq;
+}
+
+// Сколько живёт неоплаченный онлайн-заказ, прежде чем сгореть (мин).
+export const PENDING_TTL_MIN = Number(process.env.PENDING_ORDER_TTL_MIN || 20);
+
+/**
+ * Гасит брошенные счета: клиент нажал «Оплатить», закрыл окно и ушёл.
+ * Такие заказы висят в pending, засоряют историю и мешают повторить заказ.
+ * Возвращает число погашенных заказов.
+ */
+export function expirePendingOrders() {
+  const deadline = now() - PENDING_TTL_MIN * 60_000;
+  const r = db.prepare(
+    `UPDATE orders SET payment_status = 'expired', status = 'auto_cancelled', updated_at = ?
+      WHERE payment_status = 'pending' AND created_at < ?`,
+  ).run(now(), deadline);
+  return r.changes || 0;
 }
