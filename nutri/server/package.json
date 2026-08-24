@@ -12,5 +12,8 @@
     "dev": "node --watch src/server.js",
     "seed": "node src/seed.js",
     "test": "node --test"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.3"
   }
 }
