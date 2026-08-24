@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS tenants (
   webhook_secret TEXT NOT NULL,
   payment_mode  TEXT NOT NULL DEFAULT 'offline',   -- offline | online
   payment_provider_token TEXT,                      -- секрет провайдера (ЮKassa) из BotFather
+  yk_shop_id    TEXT,                               -- shopId кассы ЮKassa (прямое API)
+  yk_secret_key TEXT,                               -- секретный ключ кассы ЮKassa
   delivery_enabled INTEGER NOT NULL DEFAULT 1,
   delivery_fee_rub INTEGER NOT NULL DEFAULT 50,
   delivery_note TEXT DEFAULT 'Доставляем только в апартаменты нашего здания.',
@@ -102,6 +104,8 @@ CREATE TABLE IF NOT EXISTS orders (
   total_rub     INTEGER NOT NULL,
   payment_status TEXT NOT NULL DEFAULT 'none',      -- none (оффлайн) | pending | paid | expired
   idem_key      TEXT,                              -- отпечаток содержимого: защита от дублей
+  payment_id    TEXT,                              -- id платежа в ЮKassa
+  customer_email TEXT,                             -- e-mail для кассового чека
   items_json    TEXT NOT NULL,                     -- снапшот позиций
   history_json  TEXT NOT NULL DEFAULT '[]',
   created_at    INTEGER NOT NULL,
@@ -127,6 +131,11 @@ try { db.exec("ALTER TABLE orders ADD COLUMN payment_status TEXT NOT NULL DEFAUL
 try { db.exec('ALTER TABLE orders ADD COLUMN idem_key TEXT'); } catch {}
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_orders_pending ON orders(tenant_id, payment_status, created_at)'); } catch {}
 try { db.exec('ALTER TABLE tenants ADD COLUMN packaging_fee_rub INTEGER NOT NULL DEFAULT 0'); } catch {}
+// Прямая касса ЮKassa (оплата по ссылке в браузере + СБП) вместо шторки Telegram.
+try { db.exec('ALTER TABLE tenants ADD COLUMN yk_shop_id TEXT'); } catch {}
+try { db.exec('ALTER TABLE tenants ADD COLUMN yk_secret_key TEXT'); } catch {}
+try { db.exec('ALTER TABLE orders ADD COLUMN payment_id TEXT'); } catch {}
+try { db.exec('ALTER TABLE orders ADD COLUMN customer_email TEXT'); } catch {}
 
 export function now() {
   return Date.now();

@@ -11,6 +11,7 @@ import {
   STATUS_LABEL, STAFF_ROLES, ADMIN_ROLES, ACTIVE_STATUSES,
 } from './domain.js';
 import { validateInitData, getMe, setWebhook, sendMessage, webAppButton, createInvoiceLink, answerPreCheckoutQuery } from './telegram.js';
+import { ykConfigured, createPayment, getPayment } from './yookassa.js';
 import { seedDemo } from './seed.js';
 
 const uid = () => crypto.randomUUID();
@@ -99,6 +100,24 @@ async function notifyStaffNewOrder(tenant, o) {
   const kb = webAppBase ? webAppButton('Открыть ленту', `${webAppBase}/?t=${tenant.slug}`) : undefined;
   for (const s of staff) await sendMessage(tenant.bot_token, s.tg_user_id, text, kb);
 }
+/**
+ * Отмечает заказ оплаченным и пускает его в работу. Общая точка для обоих
+ * платёжных путей (шторка Telegram и вебхук ЮKassa), поэтому идемпотентна:
+ * повторный вебхук по тому же заказу ничего не задваивает.
+ */
+async function markOrderPaid(tenant, order) {
+  if (!order || order.payment_status === 'paid') return null;
+  // Счёт мог сгореть между созданием и оплатой — деньги уже взяты, поэтому
+  // возвращаем заказ в работу, а не оставляем отменённым.
+  db.prepare("UPDATE orders SET payment_status = 'paid', status = 'created', updated_at = ? WHERE id = ?")
+    .run(now(), order.id);
+  const paid = db.prepare('SELECT * FROM orders WHERE id = ?').get(order.id);
+  notifyStaffNewOrder(tenant, paid).catch((e) => console.error('notify staff', e));
+  sendMessage(tenant.bot_token, paid.tg_user_id,
+    `💳 Оплата получена. Заказ ${paid.number} принят в работу!`).catch(() => {});
+  return paid;
+}
+
 async function notifyClientStatus(tenant, o) {
   const map = {
     accepted: `✅ Заказ ${o.number} принят.`,
@@ -155,6 +174,19 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200); return res.end('ok');
     }
 
+    // --- Вебхук ЮKassa: /yk/:tenantId/:secret ---
+    // ЮKassa не подписывает уведомления, поэтому секрет держим в самом URL,
+    // а факт оплаты всё равно перепроверяем запросом к их API.
+    if (path.startsWith('/yk/') && method === 'POST') {
+      const [, , tenantId, secret] = path.split('/');
+      const tenant = tenantId ? db.prepare('SELECT * FROM tenants WHERE id = ?').get(tenantId) : null;
+      if (!tenant || secret !== tenant.webhook_secret) { res.writeHead(404); return res.end(); }
+      const note = await readBody(req);
+      // Отвечаем 200 всегда: любой не-200 заставит ЮKassa слать повторы сутки.
+      handleYooKassaNotification(tenant, note).catch((e) => console.error('[yookassa]', e));
+      res.writeHead(200); return res.end('ok');
+    }
+
     // --- Health ---
     if (path === '/api/health') return json(res, 200, { ok: true, time: now() });
 
@@ -182,7 +214,8 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
   // Загрузка приложения: инфо о кофейне, роль, меню.
   if (path === '/api/bootstrap' && method === 'GET') {
     return json(res, 200, {
-      tenant: { slug: tenant.slug, name: tenant.name, primaryColor: tenant.primary_color, paymentMode: tenant.payment_mode, deliveryEnabled: !!tenant.delivery_enabled, deliveryFee: tenant.delivery_fee_rub ?? 50, deliveryNote: tenant.delivery_note, packagingFee: tenant.packaging_fee_rub ?? 0 },
+      tenant: { slug: tenant.slug, name: tenant.name, primaryColor: tenant.primary_color, paymentMode: tenant.payment_mode, deliveryEnabled: !!tenant.delivery_enabled, deliveryFee: tenant.delivery_fee_rub ?? 50, deliveryNote: tenant.delivery_note, packagingFee: tenant.packaging_fee_rub ?? 0,
+        payByLink: tenant.payment_mode === 'online' && ykConfigured(tenant) },
       role,
       user: { id: String(user.id), name: [user.first_name, user.last_name].filter(Boolean).join(' ') },
       categories: categoriesOf(tenant.id),
@@ -211,8 +244,18 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     const orderTotal = priced.total + deliveryFee + packagingFee;
     const ts = now();
     const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Гость';
-    // Онлайн-оплата — если у кофейни настроен провайдер. Иначе оплата на кассе.
-    const online = tenant.payment_mode === 'online' && !!tenant.payment_provider_token;
+    // Онлайн-оплата: сначала прямая касса ЮKassa (ссылка в браузер + СБП),
+    // иначе — старая платёжная шторка Telegram. Нет ни того, ни другого — касса.
+    const viaYooKassa = tenant.payment_mode === 'online' && ykConfigured(tenant);
+    const viaTelegram = tenant.payment_mode === 'online' && !viaYooKassa && !!tenant.payment_provider_token;
+    const online = viaYooKassa || viaTelegram;
+
+    // Чек 54-ФЗ уходит на e-mail. Шторка Telegram спрашивала его сама, при
+    // оплате по ссылке e-mail собираем в приложении.
+    const email = String(body.email || '').trim().slice(0, 120);
+    if (viaYooKassa && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) {
+      return json(res, 400, { error: 'need_email', message: 'Укажите e-mail — на него придёт чек' });
+    }
 
     // Прежде чем заводить заказ — гасим брошенные счета, чтобы они не мешали
     // повторить тот же заказ и не висели в истории клиента.
@@ -237,11 +280,11 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
       const number = nextOrderNumber(tenant.id);
       db.prepare(
         `INSERT INTO orders (id, tenant_id, number, tg_user_id, customer_name, status, fulfillment,
-          addr_entrance, addr_floor, addr_apt, total_rub, payment_status, idem_key, items_json, history_json, created_at, updated_at)
-         VALUES (?,?,?,?,?,'created',?,?,?,?,?,?,?,?,?,?,?)`,
+          addr_entrance, addr_floor, addr_apt, total_rub, payment_status, idem_key, customer_email, items_json, history_json, created_at, updated_at)
+         VALUES (?,?,?,?,?,'created',?,?,?,?,?,?,?,?,?,?,?,?)`,
       ).run(id, tenant.id, number, String(user.id), name, fulfillment,
         d.entrance || null, d.floor || null, d.apt || null, orderTotal, online ? 'pending' : 'none', idemKey,
-        JSON.stringify(priced.items), JSON.stringify([{ status: 'created', at: ts }]), ts, ts);
+        email || null, JSON.stringify(priced.items), JSON.stringify([{ status: 'created', at: ts }]), ts, ts);
       o = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
     }
     const number = o.number;
@@ -278,6 +321,27 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
           payment_mode: 'full_prepayment',
         });
       }
+      // --- Оплата по ссылке (ЮKassa напрямую): карта или СБП в браузере ---
+      if (viaYooKassa) {
+        const receipt = { customer: { email }, items: receiptItems };
+        const returnUrl = `${config.publicUrl || webAppBase}/pay-return.html`
+          + `?o=${encodeURIComponent(id)}${tenant.bot_username ? `&bot=${encodeURIComponent(tenant.bot_username)}` : ''}`;
+        const pay = await createPayment(tenant, {
+          orderId: id,
+          amountRub: orderTotal,
+          description: `Заказ ${number}`,
+          returnUrl,
+          receipt,
+        });
+        if (!pay.ok) {
+          console.error('[yookassa] createPayment failed:', pay.error);
+          return json(res, 502, { error: 'payment_failed', message: 'Не удалось создать оплату. Попробуйте ещё раз' });
+        }
+        db.prepare('UPDATE orders SET payment_id = ?, updated_at = ? WHERE id = ?').run(pay.paymentId, now(), id);
+        return json(res, 201, { order: orderPublic(o), paymentUrl: pay.paymentUrl });
+      }
+
+      // --- Запасной путь: платёжная шторка Telegram ---
       // Счёт на всю сумму одной строкой (копейки). Персонал уведомим после оплаты.
       const inv = await createInvoiceLink(tenant.bot_token, {
         title: `Заказ ${number}`,
@@ -299,6 +363,30 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
 
     notifyStaffNewOrder(tenant, o).catch((e) => console.error('notify staff', e));
     return json(res, 201, { order: orderPublic(o) });
+  }
+
+  // Клиент опрашивает статус оплаты, пока открыта страница ожидания.
+  // Здесь же дёргаем ЮKassa напрямую, поэтому оплата долетает даже если вебхук
+  // в личном кабинете не настроен.
+  if (path.startsWith('/api/orders/') && path.endsWith('/payment') && method === 'GET') {
+    const orderId = path.slice('/api/orders/'.length, -'/payment'.length);
+    const o = db.prepare('SELECT * FROM orders WHERE id = ? AND tenant_id = ? AND tg_user_id = ?')
+      .get(orderId, tenant.id, String(user.id));
+    if (!o) return json(res, 404, { error: 'not_found' });
+
+    if (o.payment_status === 'pending' && o.payment_id && ykConfigured(tenant)) {
+      const check = await getPayment(tenant, o.payment_id);
+      if (check.ok && check.status === 'succeeded' && check.paid) {
+        const paid = await markOrderPaid(tenant, o);
+        if (paid) return json(res, 200, { paymentStatus: 'paid', order: orderPublic(paid) });
+      } else if (check.ok && check.status === 'canceled') {
+        db.prepare("UPDATE orders SET payment_status = 'expired', status = 'auto_cancelled', updated_at = ? WHERE id = ?")
+          .run(now(), o.id);
+        return json(res, 200, { paymentStatus: 'expired' });
+      }
+    }
+    const fresh = db.prepare('SELECT * FROM orders WHERE id = ?').get(o.id);
+    return json(res, 200, { paymentStatus: fresh.payment_status, order: orderPublic(fresh) });
   }
 
   // Клиент: свои заказы. Неоплаченные счета (pending) и сгоревшие (expired)
@@ -475,6 +563,32 @@ async function adminRoutes(req, res, path, method) {
 }
 
 // ---------- Обработка апдейтов бота ----------
+/**
+ * Уведомление от ЮKassa. Телу уведомления не доверяем: берём из него только
+ * id платежа, а статус перезапрашиваем у ЮKassa — так подделать оплату нельзя.
+ */
+async function handleYooKassaNotification(tenant, note) {
+  const obj = note && note.object;
+  const paymentId = obj && obj.id;
+  if (!paymentId) return;
+
+  const check = await getPayment(tenant, paymentId);
+  if (!check.ok) { console.error('[yookassa] getPayment failed:', check.error); return; }
+
+  // Заказ ищем по сохранённому payment_id, метаданные — как запасной вариант.
+  const orderId = (check.data.metadata && check.data.metadata.orderId) || null;
+  const o = db.prepare('SELECT * FROM orders WHERE tenant_id = ? AND (payment_id = ? OR id = ?)')
+    .get(tenant.id, paymentId, orderId || '');
+  if (!o) { console.error('[yookassa] order not found for payment', paymentId); return; }
+
+  if (check.status === 'succeeded' && check.paid) {
+    await markOrderPaid(tenant, o);
+  } else if (check.status === 'canceled' && o.payment_status === 'pending') {
+    db.prepare("UPDATE orders SET payment_status = 'expired', status = 'auto_cancelled', updated_at = ? WHERE id = ?")
+      .run(now(), o.id);
+  }
+}
+
 async function handleBotUpdate(tenant, update) {
   // 1) Подтверждение оплаты перед списанием — ответить в течение 10 сек.
   if (update.pre_checkout_query) {
@@ -498,15 +612,7 @@ async function handleBotUpdate(tenant, update) {
     const payload = String(msg.successful_payment.invoice_payload || '');
     const orderId = payload.startsWith('order:') ? payload.slice(6) : null;
     const o = orderId ? db.prepare('SELECT * FROM orders WHERE id = ? AND tenant_id = ?').get(orderId, tenant.id) : null;
-    if (o && o.payment_status !== 'paid') {
-      // Если счёт успел сгореть между pre-checkout и списанием — деньги уже
-      // взяты, поэтому возвращаем заказ в работу, а не оставляем отменённым.
-      db.prepare("UPDATE orders SET payment_status = 'paid', status = 'created', updated_at = ? WHERE id = ?")
-        .run(now(), o.id);
-      const paid = db.prepare('SELECT * FROM orders WHERE id = ?').get(o.id);
-      notifyStaffNewOrder(tenant, paid).catch((e) => console.error('notify staff', e));
-      await sendMessage(tenant.bot_token, msg.chat.id, `💳 Оплата получена. Заказ ${o.number} принят в работу!`);
-    }
+    await markOrderPaid(tenant, o);
     return;
   }
 
@@ -528,10 +634,16 @@ async function bootstrap() {
     console.log(`[server] dataDir: ${config.dataDir}`);
     console.log(`[server] publicUrl: ${config.publicUrl || '(not set — webhooks disabled)'}`);
     console.log(`[server] webAppBase: ${webAppBase || '(not set)'}`);
-    // Диагностика оплаты: видно ли серверу токен провайдера (сам токен не печатаем).
-    for (const t of db.prepare('SELECT slug, payment_mode, payment_provider_token FROM tenants').all()) {
-      const tok = t.payment_provider_token;
-      console.log(`[payments] ${t.slug}: mode=${t.payment_mode}, provider_token=${tok ? `set (${String(tok).split(':')[1] || '?'})` : 'MISSING'}`);
+    // Диагностика оплаты: секреты не печатаем, только сам факт их наличия.
+    for (const t of db.prepare('SELECT id, slug, payment_mode, payment_provider_token, yk_shop_id, yk_secret_key, webhook_secret FROM tenants').all()) {
+      const yk = t.yk_shop_id && t.yk_secret_key;
+      const way = yk ? 'ЮKassa по ссылке (карта + СБП)'
+        : t.payment_provider_token ? 'шторка Telegram'
+        : 'на кассе';
+      console.log(`[payments] ${t.slug}: mode=${t.payment_mode}, способ=${way}`);
+      if (yk && config.publicUrl) {
+        console.log(`[payments] ${t.slug}: вебхук для ЮKassa → ${config.publicUrl}/yk/${t.id}/${t.webhook_secret}`);
+      }
     }
     // Кто может работать за стойкой. Пусто — значит SEED_*_TG_ID не заданы и
     // ленту бариста никто не увидит.

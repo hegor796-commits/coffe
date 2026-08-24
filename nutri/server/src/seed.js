@@ -159,16 +159,46 @@ function applyPackagingFee(tenantId) {
   db.prepare('UPDATE tenants SET packaging_fee_rub = ? WHERE id = ?').run(fee, tenantId);
 }
 
+/**
+ * Ключи кассы ЮKassa — применяем на каждом старте, как и роли персонала.
+ * Если они есть, оплата идёт по ссылке в браузере (карта + СБП), а не через
+ * платёжную шторку Telegram.
+ */
+function applyYooKassaFromEnv(tenantId) {
+  const shopId = String(process.env.YOOKASSA_SHOP_ID || '').trim();
+  const secret = String(process.env.YOOKASSA_SECRET_KEY || '').trim();
+  db.prepare('UPDATE tenants SET yk_shop_id = ?, yk_secret_key = ? WHERE id = ?')
+    .run(shopId || null, secret || null, tenantId);
+  // Касса настроена — включаем онлайн-оплату, даже если токена из BotFather нет.
+  if (shopId && secret) {
+    db.prepare("UPDATE tenants SET payment_mode = 'online' WHERE id = ?").run(tenantId);
+  }
+}
+
+// Фото-заглушки, которые проставляются автоматически. Держим списком, чтобы
+// сбрасывать их перед пересчётом: иначе ошибочно назначенная заглушка
+// («Айс-латте» в кружке вместо стакана) навсегда останется в базе.
+const PLACEHOLDERS = ['img/raf.jpg', 'img/cappuccino.jpg'];
+
 function applyPhotoUpdates(tenantId) {
+  // Сбрасываем прошлые заглушки — настоящие фото тут же вернёт PHOTO_MAP.
+  db.prepare(
+    `UPDATE products SET photo_url = NULL
+      WHERE tenant_id = ? AND photo_url IN (${PLACEHOLDERS.map(() => '?').join(',')})`,
+  ).run(tenantId, ...PLACEHOLDERS);
+
   const stmt = db.prepare('UPDATE products SET photo_url = ? WHERE tenant_id = ? AND name = ?');
   for (const [name, url] of PHOTO_MAP) stmt.run(url, tenantId, name);
 
   // Заглушки для позиций, у которых нет индивидуальной фотки.
-  // Раф и Латте подают в стакане — берём img/raf.jpg.
+  // Раф и латте подают в стакане — берём img/raf.jpg. LIKE в SQLite не
+  // приводит кириллицу к одному регистру, поэтому перебираем оба варианта:
+  // иначе «Айс-латте» и «Матча-латте» мимо шаблона '%Латте%' проходят.
   db.prepare(
     `UPDATE products SET photo_url = 'img/raf.jpg'
       WHERE tenant_id = ? AND (photo_url IS NULL OR photo_url = '')
-        AND (name LIKE '%Раф%' OR name LIKE '%Латте%')`,
+        AND (name LIKE '%Раф%' OR name LIKE '%раф%'
+          OR name LIKE '%Латте%' OR name LIKE '%латте%')`,
   ).run(tenantId);
 
   // Остальные напитки кофейных категорий — в кружке (img/cappuccino.jpg).
@@ -220,6 +250,7 @@ export function seedDemo() {
     applyStaffFromEnv(existing.id);
     removeTapioka(existing.id);
     applyPackagingFee(existing.id);
+    applyYooKassaFromEnv(existing.id);
     return existing.id;
   }
 
@@ -548,5 +579,6 @@ export function seedDemo() {
   // Фото — единым списком, чтобы новая база и существующая получали одно и то же.
   applyPhotoUpdates(tenantId);
   applyPackagingFee(tenantId);
+  applyYooKassaFromEnv(tenantId);
   return tenantId;
 }

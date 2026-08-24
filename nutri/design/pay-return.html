@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Оплата — Любовь-Марковь</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+    :root { --bg: #FBF6EE; --card: #FFF; --ink: #2A211C; --ink-soft: #6E6155; --brand: #6B1D1D; --line: #E8DFD2; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+        min-height: 100svh; background: var(--bg); color: var(--ink);
+        font-family: 'Manrope', system-ui, sans-serif;
+        display: flex; align-items: center; justify-content: center;
+        padding: 24px; text-align: center;
+    }
+    .box { max-width: 340px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .mark { color: var(--brand); }
+    h1 { font-family: 'Unbounded', system-ui, sans-serif; font-size: 22px; font-weight: 600; line-height: 1.2; }
+    p { font-size: 14.5px; line-height: 1.6; color: var(--ink-soft); }
+    .btn {
+        margin-top: 8px; display: inline-block; text-decoration: none;
+        background: var(--brand); color: #fff; font-weight: 800; font-size: 14.5px;
+        padding: 15px 30px; border-radius: 16px; border: none; cursor: pointer;
+        font-family: 'Manrope', system-ui, sans-serif;
+        box-shadow: 0 8px 22px rgba(107, 29, 29, 0.24);
+    }
+    .hint { font-size: 12.5px; color: var(--ink-soft); opacity: 0.85; }
+</style>
+</head>
+<body>
+<div class="box">
+    <svg class="mark" width="72" height="66" viewBox="0 0 64 60" fill="none" stroke="currentColor"
+         stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 22 H44 V31 C44 41 36 48 28 48 C20 48 12 41 12 31 Z"/>
+        <path d="M44 26 C53 26 53 39 44 38"/>
+        <path d="M8 52 C16 56 40 56 48 52"/>
+        <path d="M20 5 C18 9 22 11 20 15 M28 4 C26 8 30 10 28 14 M36 5 C34 9 38 11 36 15" stroke-width="2.8"/>
+    </svg>
+    <h1>Оплата обработана</h1>
+    <p>Вернитесь в Telegram — как только банк подтвердит платёж, заказ уйдёт баристе, а чек придёт на почту.</p>
+    <a class="btn" id="back" href="https://t.me/">Вернуться в Telegram</a>
+    <p class="hint">Эту вкладку можно закрыть.</p>
+</div>
+<script>
+    // Имя бота приходит в ссылке возврата — ведём клиента прямо в его чат.
+    var bot = new URLSearchParams(location.search).get('bot');
+    var link = document.getElementById('back');
+    if (bot) link.href = 'https://t.me/' + bot.replace(/^@/, '');
+    // Telegram-браузер умеет закрываться сам — тогда клиент сразу видит мини-апп.
+    var tg = window.Telegram && window.Telegram.WebApp;
+    if (tg && tg.close) {
+        link.addEventListener('click', function (e) { e.preventDefault(); tg.close(); });
+    }
+</script>
+</body>
+</html>

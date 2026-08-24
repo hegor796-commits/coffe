@@ -98,15 +98,25 @@ export function priceOrder(tenantId, lines) {
     if (optionIds.length) {
       // Опции должны принадлежать группам этого товара.
       const allowed = db.prepare(
-        `SELECT o.id, o.name, o.price_delta_rub
+        `SELECT o.id, o.name, o.price_delta_rub, o.group_id, g.name AS group_name, g.max_select
            FROM modifier_options o
            JOIN product_modifier_groups pmg ON pmg.group_id = o.group_id
+           JOIN modifier_groups g ON g.id = o.group_id
           WHERE pmg.product_id = ?`,
       ).all(p.id);
       const byId = new Map(allowed.map((o) => [o.id, o]));
+      // Добавок можно взять несколько (сахар + корица), но не больше лимита
+      // группы и не одну и ту же дважды — иначе цена и чек разъедутся.
+      const seen = new Set();
+      const perGroup = new Map();
       for (const oid of optionIds) {
         const o = byId.get(oid);
         if (!o) throw new Error('Недопустимая опция товара');
+        if (seen.has(oid)) continue;
+        seen.add(oid);
+        const used = (perGroup.get(o.group_id) || 0) + 1;
+        if (used > (o.max_select || 1)) throw new Error(`«${o.group_name}»: выбрано слишком много вариантов`);
+        perGroup.set(o.group_id, used);
         unit += o.price_delta_rub;
         modNames.push(o.name);
       }

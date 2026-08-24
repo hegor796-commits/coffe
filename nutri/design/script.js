@@ -155,12 +155,21 @@ let fulfillment = 'pickup';      // 'pickup' | 'delivery'
 let DELIVERY_FEE = 50;           // наценка за доставку (₽), приходит из bootstrap
 let PACKAGING_FEE = 0;           // наценка за упаковку (₽), приходит из bootstrap
 let PAYMENT_ONLINE = false;      // true — оплата картой в приложении (из bootstrap)
+let PAY_BY_LINK = false;         // true — оплата по ссылке в браузере (ЮKassa: карта + СБП)
+let payEmail = '';               // e-mail для кассового чека (запоминаем между заказами)
 const delivery = { entrance: '', floor: '', apt: '' };
 let baristaFilter = 'active';
 
 function findProduct(id) { return MENU.find((p) => p.id === id); }
 function setFulfil(mode) { fulfillment = mode; saveCart(); renderCart(); }
 function setDeliveryField(field, val) { delivery[field] = val; saveCart(); }
+// E-mail не перерисовывает корзину: иначе поле теряет фокус на каждом символе.
+function setPayEmail(val) {
+    payEmail = val;
+    const s = storage();
+    if (s) { try { s.setItem(EMAIL_KEY, val); } catch { /* не критично */ } }
+}
+function emailValid(v) { return /^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(String(v || '').trim()); }
 
 // ============================================================
 //  Корзина переживает закрытие мини-приложения
@@ -169,6 +178,9 @@ function setDeliveryField(field, val) { delivery[field] = val; saveCart(); }
 // пропадала вместе с ней. Держим её в localStorage: ключ на кофейню и на
 // пользователя, чтобы на общем устройстве заказы не смешивались.
 let CART_KEY = 'lm:cart:v1:anon';
+// E-mail для чека живёт отдельным ключом: корзина после оплаты чистится, а
+// адрес должен остаться — иначе клиент печатает его перед каждым заказом.
+let EMAIL_KEY = 'lm:email:v1:anon';
 const CART_TTL_MS = 12 * 60 * 60 * 1000;   // сутки спустя корзина уже неактуальна
 
 function storage() {
@@ -208,6 +220,7 @@ function selectionFromOptionIds(product, optionIds) {
 function restoreCart() {
     const s = storage();
     if (!s) return;
+    try { payEmail = s.getItem(EMAIL_KEY) || ''; } catch { /* приватный режим */ }
     let saved;
     try { saved = JSON.parse(s.getItem(CART_KEY) || 'null'); } catch { saved = null; }
     if (!saved || !Array.isArray(saved.lines)) return;
@@ -585,7 +598,14 @@ function renderCart() {
             <div class="row"><span>Оплата</span><span>${PAYMENT_ONLINE ? 'картой в приложении' : 'на кассе при получении'}</span></div>
             <div class="row total"><span>Итого</span><span>${money(orderTotal())}</span></div>
         </div>
-        ${PAYMENT_ONLINE ? `<p class="pay-note">Telegram попросит e-mail — на него придёт кассовый чек.</p>` : ''}
+        ${PAY_BY_LINK ? `
+        <div class="delivery-box">
+            <label class="field"><span>E-mail для чека</span>
+                <input type="email" inputmode="email" autocomplete="email" value="${payEmail}"
+                       oninput="setPayEmail(this.value)" placeholder="you@example.com"></label>
+            <p class="pay-note">Оплата откроется в браузере: можно картой или через СБП — выбрать свой банк и подтвердить в его приложении. Кассовый чек придёт на этот e-mail.</p>
+        </div>`
+        : PAYMENT_ONLINE ? `<p class="pay-note">Telegram попросит e-mail — на него придёт кассовый чек.</p>` : ''}
         <div class="checkout"><button class="main-btn" onclick="checkout()">${PAYMENT_ONLINE ? 'Оплатить' : (deliverySel ? 'Оформить доставку' : 'Оформить заказ')} · ${money(orderTotal())}</button></div>`;
 }
 
@@ -597,6 +617,10 @@ async function checkout() {
     if (!cartCount()) return;
     if (fulfillment === 'delivery' && (!delivery.entrance.trim() || !delivery.floor.trim() || !delivery.apt.trim())) {
         toast('Укажите подъезд, этаж и апартаменты');
+        return;
+    }
+    if (PAY_BY_LINK && !emailValid(payEmail)) {
+        toast('Укажите e-mail — на него придёт чек');
         return;
     }
     checkoutBusy = true;
@@ -613,12 +637,19 @@ async function checkoutLive() {
     const lines = Object.values(cart).map((v) => ({ productId: v.productId, optionIds: v.optionIds, qty: v.qty }));
     const body = { fulfillment, lines };
     if (fulfillment === 'delivery') body.delivery = { ...delivery };
+    if (PAY_BY_LINK) body.email = payEmail.trim();
     const r = await api('/api/orders', 'POST', body);
     if (!r.ok) {
         toast((r.data && r.data.message) || 'Не удалось оформить заказ');
         return;
     }
     const number = r.data.order.number;
+    // Оплата по ссылке: показываем экран со ссылкой, дальше клиент платит в
+    // браузере (карта или СБП), а мы опрашиваем статус заказа.
+    if (r.data.paymentUrl) {
+        openPayScreen(r.data.order, r.data.paymentUrl);
+        return;
+    }
     // Онлайн-оплата: сервер вернул ссылку-счёт — открываем платёжное окно Telegram.
     // Заказ до оплаты висит в статусе pending и баристе не показывается, поэтому
     // корзину чистим только после успешной оплаты.
@@ -649,6 +680,87 @@ async function checkoutLive() {
     toast('Заказ ' + number + ' оформлен ✓');
     switchTab('client', 'orders');
 }
+// ============================================================
+//  Экран оплаты по ссылке (ЮKassa: карта или СБП в браузере)
+// ============================================================
+// Платёжная шторка Telegram умеет только карту и на Android разъезжает под
+// клавиатурой. Поэтому уводим клиента на страницу ЮKassa во внешнем браузере —
+// там есть СБП с выбором банка, — а сами ждём подтверждения оплаты.
+let payState = null;   // { orderId, number, total, url, timer, tries }
+
+function openPayScreen(order, url) {
+    closePayScreen();
+    payState = { orderId: order.id, number: order.number, total: order.total, url, tries: 0 };
+    renderPayScreen('idle');
+    // Возврат из браузера в приложение — самый вероятный момент оплаты.
+    document.addEventListener('visibilitychange', onPayVisibility);
+    payState.timer = setInterval(pollPayment, 3000);
+}
+function closePayScreen() {
+    if (payState && payState.timer) clearInterval(payState.timer);
+    document.removeEventListener('visibilitychange', onPayVisibility);
+    payState = null;
+    const el = document.getElementById('payscreen');
+    if (el) { el.classList.remove('show'); setTimeout(() => { if (!payState) el.innerHTML = ''; }, 260); }
+}
+function onPayVisibility() { if (!document.hidden) pollPayment(); }
+
+function openPayLink() {
+    if (!payState) return;
+    renderPayScreen('waiting');
+    // openLink уводит в внешний браузер — оттуда СБП открывает приложение банка.
+    if (tg && tg.openLink) tg.openLink(payState.url, { try_instant_view: false });
+    else window.open(payState.url, '_blank');
+}
+
+async function pollPayment() {
+    if (!payState || payState.busy) return;
+    payState.busy = true;
+    try {
+        const r = await api(`/api/orders/${payState.orderId}/payment`);
+        if (!r.ok || !payState) return;
+        if (r.data.paymentStatus === 'paid') {
+            const number = payState.number;
+            closePayScreen();
+            clearCart();
+            updateCartBadge(); renderCart();
+            toast('Оплачено ✓ Заказ ' + number + ' принят');
+            await loadClientOrders();
+            switchTab('client', 'orders');
+        } else if (r.data.paymentStatus === 'expired') {
+            closePayScreen();
+            toast('Счёт отменён. Оформите заказ заново');
+        }
+    } finally {
+        if (payState) payState.busy = false;
+    }
+}
+
+function renderPayScreen(mode) {
+    const el = document.getElementById('payscreen');
+    if (!el || !payState) return;
+    const waiting = mode === 'waiting';
+    el.innerHTML = `
+        <div class="pay-panel">
+            <div class="pay-illus">${engravingCup()}</div>
+            <span class="eyebrow">Заказ ${payState.number}</span>
+            <h2 class="pay-sum">${money(payState.total)}</h2>
+            <p class="pay-lead">${waiting
+                ? 'Ждём подтверждения оплаты. Как оплатите — вернитесь сюда, заказ уйдёт баристе автоматически.'
+                : 'Оплата откроется в браузере. Там можно заплатить картой или выбрать свой банк через СБП.'}</p>
+            <button class="main-btn auto" onclick="openPayLink()">${waiting ? 'Открыть оплату ещё раз' : 'Перейти к оплате'}</button>
+            ${waiting ? '<div class="pay-spinner" aria-hidden="true"></div>' : ''}
+            <button class="pay-cancel" onclick="cancelPayScreen()">Отменить</button>
+        </div>`;
+    requestAnimationFrame(() => el.classList.add('show'));
+}
+function cancelPayScreen() {
+    closePayScreen();
+    // Заказ остаётся неоплаченным и сам сгорит по таймауту — корзину не трогаем,
+    // чтобы клиент мог попробовать снова.
+    toast('Оплата отменена. Корзина сохранена');
+}
+
 function checkoutDemo() {
     const vals = Object.values(cart);
     const number = 'А-' + (nextDemoOrderSeq());
@@ -934,10 +1046,14 @@ async function boot() {
         const r = await api('/api/bootstrap');
         if (r.ok) {
             LIVE = true; ROLE = r.data.role;
-            if (r.data.user && r.data.user.id) CART_KEY = `lm:cart:v1:${TENANT}:${r.data.user.id}`;
+            if (r.data.user && r.data.user.id) {
+                CART_KEY = `lm:cart:v1:${TENANT}:${r.data.user.id}`;
+                EMAIL_KEY = `lm:email:v1:${TENANT}:${r.data.user.id}`;
+            }
             if (r.data.tenant && Number.isFinite(r.data.tenant.deliveryFee)) DELIVERY_FEE = r.data.tenant.deliveryFee;
             if (r.data.tenant && Number.isFinite(r.data.tenant.packagingFee)) PACKAGING_FEE = r.data.tenant.packagingFee;
             if (r.data.tenant) PAYMENT_ONLINE = r.data.tenant.paymentMode === 'online';
+            if (r.data.tenant) PAY_BY_LINK = !!r.data.tenant.payByLink;
             const catNameById = new Map(r.data.categories.map((c) => [c.id, c.name]));
             // Порядок категорий — как в бэкенде; в ленту попадают только непустые.
             const menuCatIds = new Set(r.data.menu.map((p) => p.categoryId));
