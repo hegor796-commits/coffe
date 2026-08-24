@@ -126,6 +126,7 @@ try { db.exec('ALTER TABLE tenants ADD COLUMN payment_provider_token TEXT'); } c
 try { db.exec("ALTER TABLE orders ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'none'"); } catch {}
 try { db.exec('ALTER TABLE orders ADD COLUMN idem_key TEXT'); } catch {}
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_orders_pending ON orders(tenant_id, payment_status, created_at)'); } catch {}
+try { db.exec('ALTER TABLE tenants ADD COLUMN packaging_fee_rub INTEGER NOT NULL DEFAULT 0'); } catch {}
 
 export function now() {
   return Date.now();

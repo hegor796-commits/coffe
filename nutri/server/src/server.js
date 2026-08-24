@@ -182,7 +182,7 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
   // Загрузка приложения: инфо о кофейне, роль, меню.
   if (path === '/api/bootstrap' && method === 'GET') {
     return json(res, 200, {
-      tenant: { slug: tenant.slug, name: tenant.name, primaryColor: tenant.primary_color, paymentMode: tenant.payment_mode, deliveryEnabled: !!tenant.delivery_enabled, deliveryFee: tenant.delivery_fee_rub ?? 50, deliveryNote: tenant.delivery_note },
+      tenant: { slug: tenant.slug, name: tenant.name, primaryColor: tenant.primary_color, paymentMode: tenant.payment_mode, deliveryEnabled: !!tenant.delivery_enabled, deliveryFee: tenant.delivery_fee_rub ?? 50, deliveryNote: tenant.delivery_note, packagingFee: tenant.packaging_fee_rub ?? 0 },
       role,
       user: { id: String(user.id), name: [user.first_name, user.last_name].filter(Boolean).join(' ') },
       categories: categoriesOf(tenant.id),
@@ -207,7 +207,8 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     }
     // Наценка за доставку добавляется к сумме заказа (самовывоз — бесплатно).
     const deliveryFee = fulfillment === 'delivery' ? (tenant.delivery_fee_rub ?? 50) : 0;
-    const orderTotal = priced.total + deliveryFee;
+    const packagingFee = tenant.packaging_fee_rub ?? 0;
+    const orderTotal = priced.total + deliveryFee + packagingFee;
     const ts = now();
     const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Гость';
     // Онлайн-оплата — если у кофейни настроен провайдер. Иначе оплата на кассе.
@@ -262,6 +263,16 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
           description: 'Доставка',
           quantity: '1',
           amount: { value: deliveryFee.toFixed(2), currency: 'RUB' },
+          vat_code: vatCode,
+          payment_subject: 'service',
+          payment_mode: 'full_prepayment',
+        });
+      }
+      if (packagingFee > 0) {
+        receiptItems.push({
+          description: 'Упаковка',
+          quantity: '1',
+          amount: { value: packagingFee.toFixed(2), currency: 'RUB' },
           vat_code: vatCode,
           payment_subject: 'service',
           payment_mode: 'full_prepayment',

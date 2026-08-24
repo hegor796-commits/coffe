@@ -153,6 +153,7 @@ let query = '';
 let cart = {};                   // key -> { productId, name, catKey, mods, unit, qty, optionIds:[] }
 let fulfillment = 'pickup';      // 'pickup' | 'delivery'
 let DELIVERY_FEE = 50;           // наценка за доставку (₽), приходит из bootstrap
+let PACKAGING_FEE = 0;           // наценка за упаковку (₽), приходит из bootstrap
 let PAYMENT_ONLINE = false;      // true — оплата картой в приложении (из bootstrap)
 const delivery = { entrance: '', floor: '', apt: '' };
 let baristaFilter = 'active';
@@ -199,8 +200,8 @@ function selectionFromOptionIds(product, optionIds) {
     const ids = new Set(optionIds || []);
     const sel = {};
     for (const g of product.groups) {
-        const opt = g.options.find((o) => ids.has(o.id));
-        if (opt) sel[g.id] = opt.id;
+        const matching = g.options.filter((o) => ids.has(o.id)).map((o) => o.id);
+        if (matching.length) sel[g.id] = matching;
     }
     return sel;
 }
@@ -223,7 +224,7 @@ function restoreCart() {
         cart[key] = {
             productId: product.id, name: product.name, catKey: product.catKey,
             mods: modsText(product, selected), unit: unitPrice(product, selected), qty,
-            optionIds: Object.values(selected),
+            optionIds: Object.values(selected).flat(),
         };
     }
     if (saved.fulfillment === 'delivery') fulfillment = 'delivery';
@@ -367,33 +368,40 @@ function setSearch(v) {
 // ============================================================
 let sheet = null;   // { product, selected: {groupId: optionId}, qty }
 
+// selected всегда хранит массив id: { [groupId]: string[] }
+// Для группы с maxSelect=1 — не более одного элемента.
 function defaultSelection(product) {
     const sel = {};
     for (const g of product.groups) {
         const def = g.options.find((o) => o.isDefault);
-        if (def) { sel[g.id] = def.id; continue; }
-        // Обязательную группу («Объём») предвыбираем первой опцией.
-        // Необязательную (Молоко/Добавки) без явного дефолта оставляем
-        // пустой — от неё можно отказаться.
-        if (g.required && g.options[0]) sel[g.id] = g.options[0].id;
+        if (def) { sel[g.id] = [def.id]; continue; }
+        if (g.required && g.options[0]) sel[g.id] = [g.options[0].id];
     }
     return sel;
 }
 function unitPrice(product, selected) {
     let unit = product.price;
     for (const g of product.groups) {
-        const opt = g.options.find((o) => o.id === selected[g.id]);
-        if (opt) unit += opt.priceDelta;
+        const ids = selected[g.id] || [];
+        for (const oid of ids) {
+            const opt = g.options.find((o) => o.id === oid);
+            if (opt) unit += opt.priceDelta;
+        }
     }
     return unit;
 }
 function modsText(product, selected) {
     const parts = [];
     product.groups.forEach((g, i) => {
-        const opt = g.options.find((o) => o.id === selected[g.id]);
-        if (!opt) return;
-        if (i === 0) parts.push(opt.name.split(' · ')[0]);   // короткая метка первой группы (обычно размер)
-        else if (!opt.isDefault) parts.push(opt.name.toLowerCase());
+        const ids = selected[g.id] || [];
+        const opts = g.options.filter((o) => ids.includes(o.id));
+        if (!opts.length) return;
+        if (i === 0) {
+            parts.push(opts[0].name.split(' · ')[0]);
+        } else {
+            const nonDefault = opts.filter((o) => !o.isDefault);
+            if (nonDefault.length) parts.push(nonDefault.map((o) => o.name.toLowerCase()).join(', '));
+        }
     });
     return parts.join(' · ');
 }
@@ -411,11 +419,23 @@ function closeSheet() {
 }
 function selectOption(groupId, optionId) {
     const g = sheet.product.groups.find((x) => x.id === groupId);
-    // Повторный тап по выбранной опции необязательной группы — снять выбор.
-    if (g && !g.required && sheet.selected[groupId] === optionId) {
-        delete sheet.selected[groupId];
+    if (!g) return;
+    const maxSel = g.maxSelect || 1;
+    const cur = sheet.selected[groupId] || [];
+    if (maxSel > 1) {
+        // Мульти-выбор: тап добавляет/убирает опцию.
+        if (cur.includes(optionId)) {
+            sheet.selected[groupId] = cur.filter((id) => id !== optionId);
+        } else if (cur.length < maxSel) {
+            sheet.selected[groupId] = [...cur, optionId];
+        }
     } else {
-        sheet.selected[groupId] = optionId;
+        // Одиночный выбор: повторный тап на необязательной группе снимает выбор.
+        if (!g.required && cur.includes(optionId)) {
+            sheet.selected[groupId] = [];
+        } else {
+            sheet.selected[groupId] = [optionId];
+        }
     }
     renderSheet();
 }
@@ -423,10 +443,12 @@ function sheetQty(d) { sheet.qty = Math.max(1, sheet.qty + d); renderSheet(); }
 function renderSheet() {
     const { product, selected, qty } = sheet;
     const el = document.getElementById('sheet');
-    const chips = (g) => g.options.map((o) =>
-        `<button class="opt ${selected[g.id] === o.id ? 'on' : ''}" onclick="selectOption('${g.id}','${o.id}')">
+    const chips = (g) => g.options.map((o) => {
+        const isOn = (selected[g.id] || []).includes(o.id);
+        return `<button class="opt ${isOn ? 'on' : ''}" onclick="selectOption('${g.id}','${o.id}')">
             <span>${o.name}</span>${o.priceDelta ? `<b>+${o.priceDelta} ₽</b>` : ''}
-        </button>`).join('');
+        </button>`;
+    }).join('');
     const unit = unitPrice(product, selected);
     el.innerHTML = `
         <div class="sheet-scrim" onclick="closeSheet()"></div>
@@ -468,7 +490,7 @@ function addSimple(productId) {
     addLine(product, defaultSelection(product), 1);
     toast(product.name + ' — в корзине');
 }
-function cartKey(productId, selected) { return productId + '|' + Object.values(selected).sort().join(','); }
+function cartKey(productId, selected) { return productId + '|' + Object.values(selected).flat().sort().join(','); }
 function addLine(product, selected, qty) {
     const key = cartKey(product.id, selected);
     if (cart[key]) cart[key].qty += qty;
@@ -490,8 +512,8 @@ function changeQty(key, d) {
 }
 function cartCount() { return Object.values(cart).reduce((s, v) => s + v.qty, 0); }
 function cartTotal() { return Object.values(cart).reduce((s, v) => s + v.unit * v.qty, 0); }
-// Итог с учётом доставки (для самовывоза наценки нет).
-function orderTotal() { return cartTotal() + (fulfillment === 'delivery' ? DELIVERY_FEE : 0); }
+// Итог с учётом доставки и упаковки.
+function orderTotal() { return cartTotal() + (fulfillment === 'delivery' ? DELIVERY_FEE : 0) + PACKAGING_FEE; }
 let lastCartCount = 0;
 function updateCartBadge() {
     const b = document.getElementById('cart-badge');
@@ -559,6 +581,7 @@ function renderCart() {
             <div class="row"><span>Позиции</span><span>${cartCount()} шт.</span></div>
             <div class="row"><span>Получение</span><span>${deliverySel ? 'Доставка в апартаменты' : 'Самовывоз из кофейни'}</span></div>
             ${deliverySel ? `<div class="row"><span>Доставка</span><span>+${money(DELIVERY_FEE)}</span></div>` : ''}
+            ${PACKAGING_FEE ? `<div class="row"><span>Упаковка</span><span>+${money(PACKAGING_FEE)}</span></div>` : ''}
             <div class="row"><span>Оплата</span><span>${PAYMENT_ONLINE ? 'картой в приложении' : 'на кассе при получении'}</span></div>
             <div class="row total"><span>Итого</span><span>${money(orderTotal())}</span></div>
         </div>
@@ -913,6 +936,7 @@ async function boot() {
             LIVE = true; ROLE = r.data.role;
             if (r.data.user && r.data.user.id) CART_KEY = `lm:cart:v1:${TENANT}:${r.data.user.id}`;
             if (r.data.tenant && Number.isFinite(r.data.tenant.deliveryFee)) DELIVERY_FEE = r.data.tenant.deliveryFee;
+            if (r.data.tenant && Number.isFinite(r.data.tenant.packagingFee)) PACKAGING_FEE = r.data.tenant.packagingFee;
             if (r.data.tenant) PAYMENT_ONLINE = r.data.tenant.paymentMode === 'online';
             const catNameById = new Map(r.data.categories.map((c) => [c.id, c.name]));
             // Порядок категорий — как в бэкенде; в ленту попадают только непустые.

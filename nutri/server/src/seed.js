@@ -107,6 +107,18 @@ const PHOTO_MAP = [
   ['Ириска шоколадная',                      'img/toffee-chocolate.jpg'],
 ];
 
+function removeTapioka(tenantId) {
+  db.prepare(
+    `DELETE FROM modifier_options WHERE name = 'Тапиока'
+       AND group_id IN (SELECT id FROM modifier_groups WHERE tenant_id = ? AND name = 'Добавки')`,
+  ).run(tenantId);
+}
+
+function applyPackagingFee(tenantId) {
+  const fee = Number(process.env.SEED_PACKAGING_FEE || 0);
+  db.prepare('UPDATE tenants SET packaging_fee_rub = ? WHERE id = ?').run(fee, tenantId);
+}
+
 function applyPhotoUpdates(tenantId) {
   const stmt = db.prepare('UPDATE products SET photo_url = ? WHERE tenant_id = ? AND name = ?');
   for (const [name, url] of PHOTO_MAP) stmt.run(url, tenantId, name);
@@ -147,6 +159,8 @@ export function seedDemo() {
     // Обновляем photo_url для всех продуктов у которых появилось фото.
     applyPhotoUpdates(existing.id);
     applyStaffFromEnv(existing.id);
+    removeTapioka(existing.id);
+    applyPackagingFee(existing.id);
     return existing.id;
   }
 
@@ -186,7 +200,6 @@ export function seedDemo() {
     ['Мята свежая', 50, false],
     ['Корица', 0, false],
     ['Сахар', 0, false],
-    ['Тапиока', 110, false],
     ['Лимон', 50, false],
     ['Шот эспрессо', 100, false],
   ]);
@@ -475,5 +488,6 @@ export function seedDemo() {
 
   // Фото — единым списком, чтобы новая база и существующая получали одно и то же.
   applyPhotoUpdates(tenantId);
+  applyPackagingFee(tenantId);
   return tenantId;
 }
