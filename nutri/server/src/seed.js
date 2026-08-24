@@ -122,6 +122,25 @@ function applyPackagingFee(tenantId) {
 function applyPhotoUpdates(tenantId) {
   const stmt = db.prepare('UPDATE products SET photo_url = ? WHERE tenant_id = ? AND name = ?');
   for (const [name, url] of PHOTO_MAP) stmt.run(url, tenantId, name);
+
+  // Заглушки для позиций, у которых нет индивидуальной фотки.
+  // Раф и Латте подают в стакане — берём img/raf.jpg.
+  db.prepare(
+    `UPDATE products SET photo_url = 'img/raf.jpg'
+      WHERE tenant_id = ? AND (photo_url IS NULL OR photo_url = '')
+        AND (name LIKE '%Раф%' OR name LIKE '%Латте%')`,
+  ).run(tenantId);
+
+  // Остальные напитки кофейных категорий — в кружке (img/cappuccino.jpg).
+  db.prepare(
+    `UPDATE products SET photo_url = 'img/cappuccino.jpg'
+      WHERE tenant_id = ? AND (photo_url IS NULL OR photo_url = '')
+        AND category_id IN (
+          SELECT id FROM categories
+          WHERE tenant_id = ?
+            AND name IN ('Кофе', 'Авторский кофе', 'Холодный кофе', 'Спешлти')
+        )`,
+  ).run(tenantId, tenantId);
 }
 
 /**
