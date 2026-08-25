@@ -165,6 +165,10 @@ function applyPackagingFee(tenantId) {
  * платёжную шторку Telegram.
  */
 function applyYooKassaFromEnv(tenantId) {
+  // Имя бота нужно странице возврата из браузера — кнопка «Вернуться в Telegram».
+  const botUser = String(process.env.TELEGRAM_BOT_USERNAME || '').trim().replace(/^@/, '');
+  if (botUser) db.prepare('UPDATE tenants SET bot_username = ? WHERE id = ?').run(botUser, tenantId);
+
   const shopId = String(process.env.YOOKASSA_SHOP_ID || '').trim();
   const secret = String(process.env.YOOKASSA_SECRET_KEY || '').trim();
   db.prepare('UPDATE tenants SET yk_shop_id = ?, yk_secret_key = ? WHERE id = ?')

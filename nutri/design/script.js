@@ -156,6 +156,7 @@ let DELIVERY_FEE = 50;           // наценка за доставку (₽), 
 let PACKAGING_FEE = 0;           // наценка за упаковку (₽), приходит из bootstrap
 let PAYMENT_ONLINE = false;      // true — оплата картой в приложении (из bootstrap)
 let PAY_BY_LINK = false;         // true — оплата по ссылке в браузере (ЮKassa: карта + СБП)
+let NEED_EMAIL = true;           // нужен ли e-mail (только при облачной кассе)
 let payEmail = '';               // e-mail для кассового чека (запоминаем между заказами)
 const delivery = { entrance: '', floor: '', apt: '' };
 let baristaFilter = 'active';
@@ -600,10 +601,10 @@ function renderCart() {
         </div>
         ${PAY_BY_LINK ? `
         <div class="delivery-box">
-            <label class="field"><span>E-mail для чека</span>
+            ${NEED_EMAIL ? `<label class="field"><span>E-mail для чека</span>
                 <input type="email" inputmode="email" autocomplete="email" value="${payEmail}"
-                       oninput="setPayEmail(this.value)" placeholder="you@example.com"></label>
-            <p class="pay-note">Оплата откроется в браузере: можно картой или через СБП — выбрать свой банк и подтвердить в его приложении. Кассовый чек придёт на этот e-mail.</p>
+                       oninput="setPayEmail(this.value)" placeholder="you@example.com"></label>` : ''}
+            <p class="pay-note">Оплата откроется в браузере: можно картой или через СБП — выбрать свой банк и подтвердить в его приложении.${NEED_EMAIL ? ' Кассовый чек придёт на этот e-mail.' : ''}</p>
         </div>`
         : PAYMENT_ONLINE ? `<p class="pay-note">Telegram попросит e-mail — на него придёт кассовый чек.</p>` : ''}
         <div class="checkout"><button class="main-btn" onclick="checkout()">${PAYMENT_ONLINE ? 'Оплатить' : (deliverySel ? 'Оформить доставку' : 'Оформить заказ')} · ${money(orderTotal())}</button></div>`;
@@ -619,7 +620,7 @@ async function checkout() {
         toast('Укажите подъезд, этаж и апартаменты');
         return;
     }
-    if (PAY_BY_LINK && !emailValid(payEmail)) {
+    if (PAY_BY_LINK && NEED_EMAIL && !emailValid(payEmail)) {
         toast('Укажите e-mail — на него придёт чек');
         return;
     }
@@ -637,7 +638,7 @@ async function checkoutLive() {
     const lines = Object.values(cart).map((v) => ({ productId: v.productId, optionIds: v.optionIds, qty: v.qty }));
     const body = { fulfillment, lines };
     if (fulfillment === 'delivery') body.delivery = { ...delivery };
-    if (PAY_BY_LINK) body.email = payEmail.trim();
+    if (PAY_BY_LINK && NEED_EMAIL) body.email = payEmail.trim();
     const r = await api('/api/orders', 'POST', body);
     if (!r.ok) {
         toast((r.data && r.data.message) || 'Не удалось оформить заказ');
@@ -1054,6 +1055,7 @@ async function boot() {
             if (r.data.tenant && Number.isFinite(r.data.tenant.packagingFee)) PACKAGING_FEE = r.data.tenant.packagingFee;
             if (r.data.tenant) PAYMENT_ONLINE = r.data.tenant.paymentMode === 'online';
             if (r.data.tenant) PAY_BY_LINK = !!r.data.tenant.payByLink;
+            if (r.data.tenant) NEED_EMAIL = r.data.tenant.needEmail !== false;
             const catNameById = new Map(r.data.categories.map((c) => [c.id, c.name]));
             // Порядок категорий — как в бэкенде; в ленту попадают только непустые.
             const menuCatIds = new Set(r.data.menu.map((p) => p.categoryId));

@@ -215,7 +215,8 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
   if (path === '/api/bootstrap' && method === 'GET') {
     return json(res, 200, {
       tenant: { slug: tenant.slug, name: tenant.name, primaryColor: tenant.primary_color, paymentMode: tenant.payment_mode, deliveryEnabled: !!tenant.delivery_enabled, deliveryFee: tenant.delivery_fee_rub ?? 50, deliveryNote: tenant.delivery_note, packagingFee: tenant.packaging_fee_rub ?? 0,
-        payByLink: tenant.payment_mode === 'online' && ykConfigured(tenant) },
+        payByLink: tenant.payment_mode === 'online' && ykConfigured(tenant),
+        needEmail: config.receiptEnabled },
       role,
       user: { id: String(user.id), name: [user.first_name, user.last_name].filter(Boolean).join(' ') },
       categories: categoriesOf(tenant.id),
@@ -251,9 +252,10 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     const online = viaYooKassa || viaTelegram;
 
     // Чек 54-ФЗ уходит на e-mail. Шторка Telegram спрашивала его сама, при
-    // оплате по ссылке e-mail собираем в приложении.
+    // оплате по ссылке e-mail собираем в приложении. Без облачной кассы чек не
+    // формируется, и e-mail тогда не нужен.
     const email = String(body.email || '').trim().slice(0, 120);
-    if (viaYooKassa && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) {
+    if (viaYooKassa && config.receiptEnabled && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(email)) {
       return json(res, 400, { error: 'need_email', message: 'Укажите e-mail — на него придёт чек' });
     }
 
@@ -292,7 +294,7 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
 
     if (online) {
       // Чек 54-ФЗ для боевой ЮKassa: позиция на каждый товар + доставка.
-      const vatCode = Number(process.env.RECEIPT_VAT_CODE || 1);
+      const vatCode = config.receiptVatCode;
       const receiptItems = priced.items.map((it) => ({
         description: `${it.name}${it.mods ? ' · ' + it.mods : ''}`.slice(0, 128),
         quantity: String(it.qty),
@@ -323,9 +325,10 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
       }
       // --- Оплата по ссылке (ЮKassa напрямую): карта или СБП в браузере ---
       if (viaYooKassa) {
-        const receipt = { customer: { email }, items: receiptItems };
+        const receipt = config.receiptEnabled ? { customer: { email }, items: receiptItems } : null;
+        const bot = tenant.bot_username || config.botUsername;
         const returnUrl = `${config.publicUrl || webAppBase}/pay-return.html`
-          + `?o=${encodeURIComponent(id)}${tenant.bot_username ? `&bot=${encodeURIComponent(tenant.bot_username)}` : ''}`;
+          + `?o=${encodeURIComponent(id)}${bot ? `&bot=${encodeURIComponent(bot)}` : ''}`;
         const pay = await createPayment(tenant, {
           orderId: id,
           amountRub: orderTotal,
@@ -635,12 +638,16 @@ async function bootstrap() {
     console.log(`[server] publicUrl: ${config.publicUrl || '(not set — webhooks disabled)'}`);
     console.log(`[server] webAppBase: ${webAppBase || '(not set)'}`);
     // Диагностика оплаты: секреты не печатаем, только сам факт их наличия.
-    for (const t of db.prepare('SELECT id, slug, payment_mode, payment_provider_token, yk_shop_id, yk_secret_key, webhook_secret FROM tenants').all()) {
+    for (const t of db.prepare('SELECT id, slug, payment_mode, payment_provider_token, yk_shop_id, yk_secret_key, webhook_secret, bot_username FROM tenants').all()) {
       const yk = t.yk_shop_id && t.yk_secret_key;
       const way = yk ? 'ЮKassa по ссылке (карта + СБП)'
         : t.payment_provider_token ? 'шторка Telegram'
         : 'на кассе';
       console.log(`[payments] ${t.slug}: mode=${t.payment_mode}, способ=${way}`);
+      if (yk) {
+        console.log(`[payments] ${t.slug}: чек 54-ФЗ=${config.receiptEnabled ? `да (НДС код ${config.receiptVatCode})` : 'выключен'}`
+          + `, бот для возврата=${t.bot_username ? '@' + t.bot_username : 'НЕ ЗАДАН (TELEGRAM_BOT_USERNAME)'}`);
+      }
       if (yk && config.publicUrl) {
         console.log(`[payments] ${t.slug}: вебхук для ЮKassa → ${config.publicUrl}/yk/${t.id}/${t.webhook_secret}`);
       }
@@ -653,6 +660,8 @@ async function bootstrap() {
       : '[staff] НИКОГО — задайте SEED_OWNER_TG_ID / SEED_BARISTA_TG_ID');
     const orders = db.prepare('SELECT COUNT(*) n FROM orders').get().n;
     console.log(`[orders] в базе заказов: ${orders}`);
+    const pack = db.prepare('SELECT packaging_fee_rub p FROM tenants LIMIT 1').get();
+    console.log(`[menu] наценка за упаковку: ${pack ? pack.p : 0} ₽ (переменная SEED_PACKAGING_FEE)`);
   });
 
   // Брошенные счета гасим и в фоне: клиент может больше не открыть приложение,

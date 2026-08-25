@@ -43,4 +43,14 @@ export const config = {
 
   // Ставить ли вебхуки ботам автоматически при старте (нужен publicUrl).
   autoSetWebhooks: process.env.AUTO_SET_WEBHOOKS !== 'false',
+
+  // --- Чек 54-ФЗ ---
+  // Чек уходит в ЮKassa вместе с платежом, но это работает только с облачной
+  // кассой. Без неё чек в запросе — ошибка, поэтому его можно выключить.
+  receiptEnabled: !/^(false|0|no)$/i.test(String(process.env.YOOKASSA_RECEIPT_ENABLED ?? 'true').trim()),
+  // Ставка НДС: 1 — без НДС, 2 — 0%, 3 — 10%, 4 — 20%, 5 — 10/110, 6 — 20/120.
+  receiptVatCode: Number(process.env.YOOKASSA_VAT_CODE || process.env.RECEIPT_VAT_CODE || 1),
+
+  // Имя бота без @ — для ссылки «Вернуться в Telegram» со страницы оплаты.
+  botUsername: String(process.env.TELEGRAM_BOT_USERNAME || '').trim().replace(/^@/, ''),
 };
