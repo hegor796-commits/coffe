@@ -367,3 +367,13 @@ body.in-telegram .close-btn { display: none; }
 .closed-note svg { flex-shrink: 0; margin-top: 1px; }
 .seg.seg-off { opacity: 0.4; cursor: not-allowed; }
 .main-btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+/* ---- Стоп-лист: заголовки групп и добавки ---- */
+.stop-head {
+    font-family: var(--f-sans); font-size: 11px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft);
+    margin: 18px 2px 8px; opacity: 0.75;
+}
+.stop-head:first-child { margin-top: 4px; }
+.sr-sub { display: block; font-style: normal; font-size: 11.5px; font-weight: 600; color: var(--ink-soft); margin-top: 2px; }
+.thumb-mod { display: flex; align-items: center; justify-content: center; background: var(--bg-2); color: var(--ink-soft); }

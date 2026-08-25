@@ -92,7 +92,8 @@ CREATE TABLE IF NOT EXISTS modifier_options (
   name           TEXT NOT NULL,
   price_delta_rub INTEGER NOT NULL DEFAULT 0,
   is_default     INTEGER NOT NULL DEFAULT 0,
-  sort           INTEGER NOT NULL DEFAULT 0
+  sort           INTEGER NOT NULL DEFAULT 0,
+  available      INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_opt_group ON modifier_options(group_id);
 
@@ -151,6 +152,8 @@ try { db.exec('ALTER TABLE orders ADD COLUMN payment_id TEXT'); } catch {}
 try { db.exec('ALTER TABLE orders ADD COLUMN customer_email TEXT'); } catch {}
 // Режим работы: JSON с окнами по дням недели и отсечками приёма заказов.
 try { db.exec('ALTER TABLE tenants ADD COLUMN hours_json TEXT'); } catch {}
+// Стоп-лист распространяется и на добавки: закончилось молоко — снимаем опцию.
+try { db.exec('ALTER TABLE modifier_options ADD COLUMN available INTEGER NOT NULL DEFAULT 1'); } catch {}
 
 export function now() {
   return Date.now();

@@ -9,7 +9,7 @@ import { db, now, nextOrderNumber, expirePendingOrders, PENDING_TTL_MIN } from '
 import {
   roleOf, buildMenu, categoriesOf, priceOrder, nextStatus,
   STATUS_LABEL, STAFF_ROLES, ADMIN_ROLES, ACTIVE_STATUSES,
-  shopSchedule, shopStatus,
+  shopSchedule, shopStatus, modifierGroupsOf, localHour, startOfLocalDay,
 } from './domain.js';
 import { validateInitData, getMe, setWebhook, sendMessage, webAppButton, createInvoiceLink, answerPreCheckoutQuery } from './telegram.js';
 import { ykConfigured, createPayment, getPayment } from './yookassa.js';
@@ -226,6 +226,8 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
       // должен сам пересчитывать статус, не дёргая сервер.
       hours: shopSchedule(tenant),
       shop: shopStatus(tenant),
+      // Полный список добавок нужен только персоналу — на экране стоп-листа.
+      modifierGroups: STAFF_ROLES.includes(role) ? modifierGroupsOf(tenant.id) : undefined,
       serverTime: now(),
     });
   }
@@ -463,8 +465,24 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
   if (path === '/api/staff/stop' && method === 'POST') {
     if (!STAFF_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
     const body = await readBody(req);
+    const on = body.available ? 1 : 0;
+    // Стоп-лист покрывает и добавки: закончилось растительное молоко — снимаем
+    // опцию, и она пропадает из шторки товара, а не только из меню.
+    const optionIds = Array.isArray(body.optionIds) ? body.optionIds
+      : body.optionId ? [body.optionId] : null;
+    if (optionIds) {
+      // Одноимённая опция может встречаться в нескольких группах — снимаем все.
+      const stmt = db.prepare(
+        `UPDATE modifier_options SET available = ?
+          WHERE id = ? AND group_id IN (SELECT id FROM modifier_groups WHERE tenant_id = ?)`,
+      );
+      let changed = 0;
+      for (const oid of optionIds.slice(0, 50)) changed += stmt.run(on, String(oid), tenant.id).changes || 0;
+      if (!changed) return json(res, 404, { error: 'not_found' });
+      return json(res, 200, { ok: true });
+    }
     const r = db.prepare('UPDATE products SET available = ? WHERE id = ? AND tenant_id = ?')
-      .run(body.available ? 1 : 0, body.productId, tenant.id);
+      .run(on, body.productId, tenant.id);
     if (!r.changes) return json(res, 404, { error: 'not_found' });
     return json(res, 200, { ok: true });
   }
@@ -482,21 +500,27 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
   // Владелец/менеджер: сводка за сегодня (выручка, число заказов, распределение по часам).
   if (path === '/api/staff/summary' && method === 'GET') {
     if (!ADMIN_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
-    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+    // «Сегодня» — по часам кофейни, а не по часовому поясу контейнера. На
+    // Railway он UTC, из-за чего сутки обнулялись в 03:00 по Москве, и разные
+    // владельцы видели разные цифры в зависимости от момента открытия.
+    const dayStart = startOfLocalDay(tenant);
     // Неоплаченные счета в выручку не идут — считаем только состоявшиеся заказы.
     const rows = db.prepare(
       `SELECT total_rub, status, created_at FROM orders
         WHERE tenant_id = ? AND created_at >= ? AND payment_status NOT IN ('pending','expired')`,
-    ).all(tenant.id, dayStart.getTime());
+    ).all(tenant.id, dayStart);
     const CANCELLED = new Set(['rejected', 'auto_cancelled', 'cancelled_by_client']);
     const counted = rows.filter((r) => !CANCELLED.has(r.status));
     const revenue = counted.reduce((s, r) => s + r.total_rub, 0);
     const count = counted.length;
     const hours = Array.from({ length: 24 }, () => 0);
-    for (const r of counted) hours[new Date(r.created_at).getHours()]++;
+    for (const r of counted) hours[localHour(tenant, r.created_at)]++;
     return json(res, 200, {
       revenue, count, avg: count ? Math.round(revenue / count) : 0,
       cancelled: rows.length - counted.length, hours,
+      // Владельцы смотрят на одни и те же данные — показываем, за какой
+      // период и в каком поясе они посчитаны.
+      since: dayStart, tz: (shopSchedule(tenant) || {}).tz || 'Europe/Moscow',
     });
   }
 

@@ -45,14 +45,14 @@ export function buildMenu(tenantId) {
   const groups = db.prepare('SELECT id, name, required, min_select, max_select FROM modifier_groups WHERE tenant_id = ?')
     .all(tenantId);
   const options = db.prepare(
-    `SELECT o.id, o.group_id, o.name, o.price_delta_rub, o.is_default, o.sort
+    `SELECT o.id, o.group_id, o.name, o.price_delta_rub, o.is_default, o.sort, o.available
        FROM modifier_options o JOIN modifier_groups g ON g.id = o.group_id
       WHERE g.tenant_id = ? ORDER BY o.sort`,
   ).all(tenantId);
 
   const groupsById = new Map(groups.map((g) => [g.id, {
     id: g.id, name: g.name, required: !!g.required, minSelect: g.min_select, maxSelect: g.max_select,
-    options: options.filter((o) => o.group_id === g.id).map((o) => ({
+    options: options.filter((o) => o.group_id === g.id && o.available).map((o) => ({
       id: o.id, name: o.name, priceDelta: o.price_delta_rub, isDefault: !!o.is_default,
     })),
   }]));
@@ -98,7 +98,7 @@ export function priceOrder(tenantId, lines) {
     if (optionIds.length) {
       // Опции должны принадлежать группам этого товара.
       const allowed = db.prepare(
-        `SELECT o.id, o.name, o.price_delta_rub, o.group_id, g.name AS group_name, g.max_select
+        `SELECT o.id, o.name, o.price_delta_rub, o.available, o.group_id, g.name AS group_name, g.max_select
            FROM modifier_options o
            JOIN product_modifier_groups pmg ON pmg.group_id = o.group_id
            JOIN modifier_groups g ON g.id = o.group_id
@@ -112,6 +112,7 @@ export function priceOrder(tenantId, lines) {
       for (const oid of optionIds) {
         const o = byId.get(oid);
         if (!o) throw new Error('Недопустимая опция товара');
+        if (!o.available) throw new Error(`«${o.name}» сейчас в стоп-листе`);
         if (seen.has(oid)) continue;
         seen.add(oid);
         const used = (perGroup.get(o.group_id) || 0) + 1;
@@ -208,4 +209,60 @@ export function shopStatus(tenant, at = Date.now()) {
     opensInMin: next ? next.open - min : null,
     tz,
   };
+}
+
+/**
+ * Добавки для экрана стоп-листа.
+ * Обязательные группы («Объём») не отдаём: это не запас на складе, а выбор,
+ * без которого товар не заказать — сняв все размеры, позицию просто сломали бы.
+ * Одноимённые группы сводим в одну, одноимённые опции — в одну строку со
+ * списком id: закончилось растительное молоко — снимаем везде, где предлагается.
+ */
+export function modifierGroupsOf(tenantId) {
+  const rows = db.prepare(
+    `SELECT g.name AS group_name, g.sort AS group_sort,
+            o.id, o.name, o.price_delta_rub, o.available, o.sort
+       FROM modifier_options o JOIN modifier_groups g ON g.id = o.group_id
+      WHERE g.tenant_id = ? AND g.required = 0
+      ORDER BY g.sort, g.name, o.sort`,
+  ).all(tenantId);
+
+  const byGroup = new Map();
+  for (const r of rows) {
+    if (!byGroup.has(r.group_name)) byGroup.set(r.group_name, new Map());
+    const opts = byGroup.get(r.group_name);
+    const cur = opts.get(r.name);
+    if (cur) {
+      cur.ids.push(r.id);
+      // Строка считается доступной, только если доступны все её копии.
+      cur.available = cur.available && !!r.available;
+    } else {
+      opts.set(r.name, { ids: [r.id], name: r.name, priceDelta: r.price_delta_rub, available: !!r.available });
+    }
+  }
+  return [...byGroup].map(([name, opts]) => ({ name, options: [...opts.values()] }));
+}
+
+/** Час суток (0–23) в поясе кофейни — для разбивки заказов по часам. */
+export function localHour(tenant, at) {
+  const tz = (shopSchedule(tenant) || {}).tz || DEFAULT_TZ;
+  try {
+    return Number(new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', hourCycle: 'h23' })
+      .formatToParts(new Date(at)).find((p) => p.type === 'hour').value);
+  } catch { return new Date(at).getHours(); }
+}
+
+/** Метка полуночи текущих суток в поясе кофейни. */
+export function startOfLocalDay(tenant, at = Date.now()) {
+  const tz = (shopSchedule(tenant) || {}).tz || DEFAULT_TZ;
+  try {
+    const p = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(at));
+    const get = (t) => Number((p.find((x) => x.type === t) || {}).value || 0);
+    // Сколько прошло с локальной полуночи — столько и отматываем назад.
+    return at - ((get('hour') * 3600 + get('minute') * 60 + get('second')) * 1000);
+  } catch {
+    const d = new Date(at); d.setHours(0, 0, 0, 0); return d.getTime();
+  }
 }

@@ -158,6 +158,7 @@ let PAYMENT_ONLINE = false;      // true — оплата картой в при
 let PAY_BY_LINK = false;         // true — оплата по ссылке в браузере (ЮKassa: карта + СБП)
 let NEED_EMAIL = true;           // нужен ли e-mail (только при облачной кассе)
 let HOURS = null;                // режим работы кофейни (из bootstrap)
+let MODIFIER_GROUPS = [];        // добавки для экрана стоп-листа (только персоналу)
 let payEmail = '';               // e-mail для кассового чека (запоминаем между заказами)
 const delivery = { entrance: '', floor: '', apt: '' };
 let baristaFilter = 'active';
@@ -239,6 +240,11 @@ function restoreCart() {
         const product = findProduct(line.productId);
         if (!product || product.available === false) { dropped++; continue; }
         const selected = selectionFromOptionIds(product, line.optionIds);
+        // Опция могла уехать в стоп-лист, пока приложение было закрыто. Молча
+        // вернуть позицию без неё нельзя: человек заказывал на кокосовом молоке,
+        // а получил бы на обычном и по другой цене.
+        const saved = Array.isArray(line.optionIds) ? line.optionIds : [];
+        if (Object.values(selected).flat().length !== saved.length) { dropped++; continue; }
         const qty = Math.max(1, Math.min(50, Number(line.qty) || 1));
         const key = cartKey(product.id, selected);
         // Цену пересчитываем от текущего меню — иначе на кассе будет расхождение.
@@ -1009,18 +1015,62 @@ async function rejectOrder(id) {
 // ============================================================
 //  Стоп-лист
 // ============================================================
-function renderStopList() {
-    document.getElementById('stop-list').innerHTML = MENU.map((p) => `
+// Меню большое, поэтому листать его в поиске «что закончилось» невозможно —
+// экран стоп-листа ищет и по позициям, и по добавкам.
+let stopQuery = '';
+let stopTimer;
+function setStopSearch(v) {
+    stopQuery = v;
+    clearTimeout(stopTimer);
+    stopTimer = setTimeout(renderStopList, 110);
+}
+const stopMatch = (name) => !stopQuery.trim() || name.toLowerCase().includes(stopQuery.trim().toLowerCase());
+
+function stopRow({ key, name, available, sub, onchange, thumb }) {
+    return `
         <div class="stop-row">
-            <span class="thumb cat-${p.catKey}">${cupArt()}</span>
-            <span class="sr-name">${p.name}</span>
-            <span class="sr-state" id="ss-${p.id}">${p.available ? 'в наличии' : 'в стопе'}</span>
+            ${thumb || '<span class="thumb thumb-mod">' + IC.bag + '</span>'}
+            <span class="sr-name">${name}${sub ? `<em class="sr-sub">${sub}</em>` : ''}</span>
+            <span class="sr-state" id="ss-${key}">${available ? 'в наличии' : 'в стопе'}</span>
             <label class="switch">
-                <input type="checkbox" ${p.available ? 'checked' : ''} onchange="toggleStop('${p.id}',this.checked)" aria-label="${p.name}">
+                <input type="checkbox" ${available ? 'checked' : ''} onchange="${onchange}" aria-label="${name}">
                 <span class="slider"></span>
             </label>
-        </div>`).join('');
+        </div>`;
 }
+
+function renderStopList() {
+    const wrap = document.getElementById('stop-list');
+    if (!wrap) return;
+    const parts = [];
+
+    const products = MENU.filter((p) => stopMatch(p.name));
+    if (products.length) {
+        parts.push('<div class="stop-head">Позиции меню</div>');
+        parts.push(products.map((p) => stopRow({
+            key: p.id, name: p.name, available: p.available, sub: p.categoryName,
+            thumb: `<span class="thumb cat-${p.catKey}">${cupArt()}</span>`,
+            onchange: `toggleStop('${p.id}',this.checked)`,
+        })).join(''));
+    }
+
+    // Добавки: молоко, сиропы и прочее. Закончилось растительное молоко —
+    // снимается везде, где эта опция предлагается.
+    for (const g of MODIFIER_GROUPS) {
+        const opts = g.options.filter((o) => stopMatch(o.name));
+        if (!opts.length) continue;
+        parts.push(`<div class="stop-head">${g.name}</div>`);
+        parts.push(opts.map((o) => stopRow({
+            key: o.ids[0], name: o.name, available: o.available,
+            sub: o.priceDelta ? `+${o.priceDelta} ₽` : '',
+            onchange: `toggleStopOption('${o.ids.join(',')}',this.checked)`,
+        })).join(''));
+    }
+
+    wrap.innerHTML = parts.length ? parts.join('')
+        : '<div class="empty-note">Ничего не найдено</div>';
+}
+
 async function toggleStop(id, available) {
     const p = findProduct(id);
     if (!p) return;
@@ -1029,9 +1079,28 @@ async function toggleStop(id, available) {
         if (!r.ok) { toast('Не удалось обновить стоп-лист'); renderStopList(); return; }
     }
     p.available = available;
-    document.getElementById('ss-' + id).textContent = available ? 'в наличии' : 'в стопе';
+    const badge = document.getElementById('ss-' + id);
+    if (badge) badge.textContent = available ? 'в наличии' : 'в стопе';
     renderMenu(); renderOwnerMenu();
     toast(p.name + (available ? ' — снова в меню' : ' — в стоп-лист'));
+}
+
+async function toggleStopOption(idList, available) {
+    const ids = String(idList).split(',');
+    let opt = null;
+    for (const g of MODIFIER_GROUPS) {
+        const o = g.options.find((x) => x.ids[0] === ids[0]);
+        if (o) { opt = o; break; }
+    }
+    if (!opt) return;
+    if (LIVE) {
+        const r = await api('/api/staff/stop', 'POST', { optionIds: ids, available });
+        if (!r.ok) { toast('Не удалось обновить стоп-лист'); renderStopList(); return; }
+    }
+    opt.available = available;
+    const badge = document.getElementById('ss-' + ids[0]);
+    if (badge) badge.textContent = available ? 'в наличии' : 'в стопе';
+    toast(opt.name + (available ? ' — снова доступно' : ' — в стоп-лист'));
 }
 
 // ============================================================
@@ -1159,6 +1228,7 @@ async function boot() {
             if (r.data.tenant) PAY_BY_LINK = !!r.data.tenant.payByLink;
             if (r.data.tenant) NEED_EMAIL = r.data.tenant.needEmail !== false;
             HOURS = r.data.hours || null;
+            MODIFIER_GROUPS = r.data.modifierGroups || [];
             const catNameById = new Map(r.data.categories.map((c) => [c.id, c.name]));
             // Порядок категорий — как в бэкенде; в ленту попадают только непустые.
             const menuCatIds = new Set(r.data.menu.map((p) => p.categoryId));
