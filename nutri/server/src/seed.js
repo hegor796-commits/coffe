@@ -223,17 +223,28 @@ function applyPhotoUpdates(tenantId) {
  * и после пересоздания базы остаться без доступа к ленте проще простого.
  */
 function applyStaffFromEnv(tenantId) {
+  // В переменной можно перечислить несколько id через запятую — например,
+  // двух владельцев: SEED_OWNER_TG_ID=111,222
+  const ids = (value) => String(value || '')
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => /^\d+$/.test(s));
+
   const roles = [
     [process.env.SEED_OWNER_TG_ID, 'owner', 'Владелец'],
     [process.env.SEED_BARISTA_TG_ID, 'barista', 'Бариста'],
   ];
-  for (const [tgId, role, name] of roles) {
-    if (!tgId) continue;
-    db.prepare(
-      `INSERT INTO staff (id, tenant_id, tg_user_id, role, name) VALUES (?,?,?,?,?)
-       ON CONFLICT(tenant_id, tg_user_id) DO UPDATE SET role = excluded.role, active = 1`,
-    ).run(uid(), tenantId, String(tgId).trim(), role, name);
+  // Имя обновляем только у новых записей: у добавленных через админ-API оно
+  // осмысленное, и затирать его безликим «Владелец» не надо.
+  const stmt = db.prepare(
+    `INSERT INTO staff (id, tenant_id, tg_user_id, role, name) VALUES (?,?,?,?,?)
+     ON CONFLICT(tenant_id, tg_user_id) DO UPDATE SET role = excluded.role, active = 1`,
+  );
+  for (const [raw, role, name] of roles) {
+    for (const tgId of ids(raw)) stmt.run(uid(), tenantId, tgId, role, name);
   }
+  // Тех, кого убрали из переменной, здесь не отключаем: персонал можно
+  // заводить и через админ-API, такие записи снести было бы неожиданно.
 }
 
 export function seedDemo() {
