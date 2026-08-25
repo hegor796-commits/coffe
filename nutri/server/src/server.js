@@ -9,6 +9,7 @@ import { db, now, nextOrderNumber, expirePendingOrders, PENDING_TTL_MIN } from '
 import {
   roleOf, buildMenu, categoriesOf, priceOrder, nextStatus,
   STATUS_LABEL, STAFF_ROLES, ADMIN_ROLES, ACTIVE_STATUSES,
+  shopSchedule, shopStatus,
 } from './domain.js';
 import { validateInitData, getMe, setWebhook, sendMessage, webAppButton, createInvoiceLink, answerPreCheckoutQuery } from './telegram.js';
 import { ykConfigured, createPayment, getPayment } from './yookassa.js';
@@ -221,6 +222,10 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
       user: { id: String(user.id), name: [user.first_name, user.last_name].filter(Boolean).join(' ') },
       categories: categoriesOf(tenant.id),
       menu: buildMenu(tenant.id),
+      // Расписание отдаём целиком: мини-апп может висеть открытым часами и
+      // должен сам пересчитывать статус, не дёргая сервер.
+      hours: shopSchedule(tenant),
+      shop: shopStatus(tenant),
       serverTime: now(),
     });
   }
@@ -234,6 +239,22 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
 
     const fulfillment = body.fulfillment === 'delivery' ? 'delivery' : 'pickup';
     const d = body.delivery || {};
+
+    // Часы работы проверяет сервер: у клиента часы могут врать, а заказ,
+    // упавший баристе после закрытия, готовить уже некому.
+    const shop = shopStatus(tenant);
+    if (!shop.open) {
+      return json(res, 409, { error: 'shop_closed', shop,
+        message: shop.opensAt ? `Кофейня закрыта. Откроемся в ${shop.opensAt}` : 'Кофейня закрыта' });
+    }
+    if (fulfillment === 'delivery' && !shop.delivery) {
+      return json(res, 409, { error: 'delivery_closed', shop,
+        message: `Доставку принимаем до ${shop.lastDelivery}. Самовывоз — до ${shop.lastPickup}` });
+    }
+    if (fulfillment === 'pickup' && !shop.pickup) {
+      return json(res, 409, { error: 'pickup_closed', shop,
+        message: `Заказы принимаем до ${shop.lastPickup}. Кофейня закроется в ${shop.closesAt}` });
+    }
     if (fulfillment === 'delivery') {
       if (!tenant.delivery_enabled) return json(res, 400, { error: 'delivery_off' });
       if (!String(d.entrance || '').trim() || !String(d.floor || '').trim() || !String(d.apt || '').trim())
@@ -662,6 +683,14 @@ async function bootstrap() {
     console.log(`[orders] в базе заказов: ${orders}`);
     const pack = db.prepare('SELECT packaging_fee_rub p FROM tenants LIMIT 1').get();
     console.log(`[menu] наценка за упаковку: ${pack ? pack.p : 0} ₽ (переменная SEED_PACKAGING_FEE)`);
+    for (const t of db.prepare('SELECT slug, hours_json FROM tenants').all()) {
+      const sch = shopSchedule(t);
+      if (!sch) { console.log(`[hours] ${t.slug}: круглосуточно (расписание не задано)`); continue; }
+      const win = (w) => (w ? `${w[0]}–${w[1]}` : 'выходной');
+      const st = shopStatus(t);
+      console.log(`[hours] ${t.slug}: будни ${win(sch.days[0])}, выходные ${win(sch.days[5])} (${sch.tz})`);
+      console.log(`[hours] ${t.slug}: сейчас ${st.open ? `открыто до ${st.closesAt} · доставка до ${st.lastDelivery}, самовывоз до ${st.lastPickup}` : `закрыто, откроется в ${st.opensAt}`}`);
+    }
   });
 
   // Брошенные счета гасим и в фоне: клиент может больше не открыть приложение,

@@ -127,3 +127,85 @@ export function priceOrder(tenantId, lines) {
   }
   return { items, total };
 }
+
+// ============================================================
+//  Режим работы кофейни
+// ============================================================
+// Часы храним в самом тенанте (hours_json), чтобы у каждой кофейни было своё
+// расписание. Считаем всё в её часовом поясе: у клиента на телефоне может быть
+// любой, а кофейня открывается по московскому времени.
+export const DEFAULT_TZ = 'Europe/Moscow';
+
+/** Расписание тенанта или null, если часы не заданы (тогда работаем всегда). */
+export function shopSchedule(tenant) {
+  let s = null;
+  try { s = JSON.parse((tenant && tenant.hours_json) || 'null'); } catch { /* битый JSON — как без расписания */ }
+  if (!s || !Array.isArray(s.days) || s.days.length !== 7) return null;
+  return s;
+}
+
+const hhmmToMin = (v) => {
+  const [h, m] = String(v || '').split(':').map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+};
+const minToHhmm = (m) => {
+  const x = ((Math.round(m) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
+};
+
+// Локальные день недели и минуты с полуночи. Через Intl, потому что смещение
+// пояса — дело ICU, а не арифметики с UTC.
+const WEEKDAY_IDX = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+function localNow(at, tz) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(at));
+  const get = (t) => (parts.find((x) => x.type === t) || {}).value;
+  return {
+    dayIdx: WEEKDAY_IDX[get('weekday')] ?? 0,
+    min: Number(get('hour')) * 60 + Number(get('minute')),
+  };
+}
+
+/**
+ * Состояние кофейни на момент `at`.
+ * Приём заказов закрывается раньше самой кофейни: курьеру нужно успеть
+ * доехать, баристе — приготовить. Поэтому у доставки и самовывоза свои отсечки.
+ */
+export function shopStatus(tenant, at = Date.now()) {
+  const sch = shopSchedule(tenant);
+  if (!sch) return { open: true, pickup: true, delivery: true, always: true };
+
+  const tz = sch.tz || DEFAULT_TZ;
+  const { dayIdx, min } = localNow(at, tz);
+  const leadDelivery = Number((sch.lastOrderMin || {}).delivery ?? 60);
+  const leadPickup = Number((sch.lastOrderMin || {}).pickup ?? 30);
+
+  // Раскладываем окна работы соседних суток в одну шкалу минут от сегодняшней
+  // полуночи. Вчерашнее окно берём тоже — оно может тянуться за полночь.
+  const windows = [];
+  for (let d = -1; d <= 7; d++) {
+    const w = sch.days[(((dayIdx + d) % 7) + 7) % 7];
+    if (!Array.isArray(w) || !w[0] || !w[1]) continue;   // выходной
+    const open = d * 1440 + hhmmToMin(w[0]);
+    let close = d * 1440 + hhmmToMin(w[1]);
+    if (close <= open) close += 1440;                     // закрытие после полуночи
+    windows.push({ open, close });
+  }
+  windows.sort((a, b) => a.open - b.open);
+
+  const cur = windows.find((w) => min >= w.open && min < w.close) || null;
+  const next = windows.find((w) => w.open > min) || null;
+
+  return {
+    open: !!cur,
+    pickup: !!cur && min < cur.close - leadPickup,
+    delivery: !!cur && min < cur.close - leadDelivery,
+    closesAt: cur ? minToHhmm(cur.close) : null,
+    lastPickup: cur ? minToHhmm(cur.close - leadPickup) : null,
+    lastDelivery: cur ? minToHhmm(cur.close - leadDelivery) : null,
+    opensAt: next ? minToHhmm(next.open) : null,
+    opensInMin: next ? next.open - min : null,
+    tz,
+  };
+}

@@ -157,12 +157,19 @@ let PACKAGING_FEE = 0;           // наценка за упаковку (₽), 
 let PAYMENT_ONLINE = false;      // true — оплата картой в приложении (из bootstrap)
 let PAY_BY_LINK = false;         // true — оплата по ссылке в браузере (ЮKassa: карта + СБП)
 let NEED_EMAIL = true;           // нужен ли e-mail (только при облачной кассе)
+let HOURS = null;                // режим работы кофейни (из bootstrap)
 let payEmail = '';               // e-mail для кассового чека (запоминаем между заказами)
 const delivery = { entrance: '', floor: '', apt: '' };
 let baristaFilter = 'active';
 
 function findProduct(id) { return MENU.find((p) => p.id === id); }
-function setFulfil(mode) { fulfillment = mode; saveCart(); renderCart(); }
+function setFulfil(mode) {
+    if (mode === 'delivery' && !shopStatus().delivery) {
+        toast(`Доставку принимаем до ${shopStatus().lastDelivery}`);
+        return;
+    }
+    fulfillment = mode; saveCart(); renderCart();
+}
 function setDeliveryField(field, val) { delivery[field] = val; saveCart(); }
 // E-mail не перерисовывает корзину: иначе поле теряет фокус на каждом символе.
 function setPayEmail(val) {
@@ -320,6 +327,69 @@ function switchTab(role, tab) {
 }
 
 // ============================================================
+//  Режим работы
+// ============================================================
+// Зеркало серверной shopStatus (nutri/server/src/domain.js). Считаем на
+// клиенте, чтобы статус оставался живым, пока приложение открыто, — но
+// последнее слово всё равно за сервером при оформлении заказа.
+const WEEKDAY_IDX = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+const hhmmToMin = (v) => {
+    const [h, m] = String(v || '').split(':').map(Number);
+    return (isFinite(h) ? h : 0) * 60 + (isFinite(m) ? m : 0);
+};
+const minToHhmm = (m) => {
+    const x = ((Math.round(m) % 1440) + 1440) % 1440;
+    return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
+};
+function shopStatus(at) {
+    const sch = HOURS;
+    if (!sch || !Array.isArray(sch.days) || sch.days.length !== 7) return { open: true, pickup: true, delivery: true };
+    let dayIdx = 0, min = 0;
+    try {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+            timeZone: sch.tz || 'Europe/Moscow', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+        }).formatToParts(new Date(at || Date.now()));
+        const get = (t) => (parts.find((x) => x.type === t) || {}).value;
+        dayIdx = WEEKDAY_IDX[get('weekday')] || 0;
+        min = Number(get('hour')) * 60 + Number(get('minute'));
+    } catch {
+        return { open: true, pickup: true, delivery: true };   // старый WebView без Intl
+    }
+    const lead = sch.lastOrderMin || {};
+    const leadDelivery = Number(lead.delivery != null ? lead.delivery : 60);
+    const leadPickup = Number(lead.pickup != null ? lead.pickup : 30);
+
+    const windows = [];
+    for (let d = -1; d <= 7; d++) {
+        const w = sch.days[(((dayIdx + d) % 7) + 7) % 7];
+        if (!Array.isArray(w) || !w[0] || !w[1]) continue;
+        const open = d * 1440 + hhmmToMin(w[0]);
+        let close = d * 1440 + hhmmToMin(w[1]);
+        if (close <= open) close += 1440;
+        windows.push({ open, close });
+    }
+    windows.sort((a, b) => a.open - b.open);
+    const cur = windows.find((w) => min >= w.open && min < w.close) || null;
+    const next = windows.find((w) => w.open > min) || null;
+    return {
+        open: !!cur,
+        pickup: !!cur && min < cur.close - leadPickup,
+        delivery: !!cur && min < cur.close - leadDelivery,
+        closesAt: cur ? minToHhmm(cur.close) : null,
+        lastPickup: cur ? minToHhmm(cur.close - leadPickup) : null,
+        lastDelivery: cur ? minToHhmm(cur.close - leadDelivery) : null,
+        opensAt: next ? minToHhmm(next.open) : null,
+    };
+}
+// Расписание одной строкой — для подписи «Работаем …».
+function hoursText() {
+    if (!HOURS || !Array.isArray(HOURS.days)) return '';
+    const w = (d) => (d ? `${d[0]}–${d[1]}` : 'выходной');
+    const wd = w(HOURS.days[0]), we = w(HOURS.days[5]);
+    return wd === we ? `Ежедневно ${wd}` : `Будни ${wd} · выходные ${we}`;
+}
+
+// ============================================================
 //  Клиент: меню
 // ============================================================
 // Собираем ленту категорий из реального меню (а не хардкод 4 штук).
@@ -335,7 +405,20 @@ function renderCategories() {
     wrap.innerHTML = chips.join('');
 }
 
+function renderClosedBanner() {
+    const el = document.getElementById('shop-banner');
+    if (!el) return;
+    const st = shopStatus();
+    if (st.open && st.pickup) { el.className = 'shop-banner'; el.innerHTML = ''; return; }
+    const text = !st.open
+        ? `Сейчас закрыто${st.opensAt ? ` · откроемся в ${st.opensAt}` : ''}. ${hoursText()}`
+        : `Приём заказов на сегодня закрыт${st.closesAt ? ` · работаем до ${st.closesAt}` : ''}`;
+    el.className = 'shop-banner show';
+    el.innerHTML = `${IC.warn}<span>${text}</span>`;
+}
+
 function renderMenu(opts) {
+    renderClosedBanner();
     const stagger = !opts || opts.stagger !== false;
     const grid = document.getElementById('menu-grid');
     const q = query.trim().toLowerCase();
@@ -571,6 +654,10 @@ function renderCart() {
         </div>`;
     }).join('');
     const deliverySel = fulfillment === 'delivery';
+    const st = shopStatus();
+    // Доставка закрывается раньше самовывоза — курьеру нужно успеть доехать.
+    const deliveryOff = !st.delivery;
+    const ordersOff = !st.pickup;
     wrap.innerHTML = `
         <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div></div>
         <span class="eyebrow">Ваш заказ</span>
@@ -579,7 +666,7 @@ function renderCart() {
 
         <div class="fulfil">
             <button class="seg ${!deliverySel ? 'on' : ''}" onclick="setFulfil('pickup')">${IC.bag} Заберу сам</button>
-            <button class="seg ${deliverySel ? 'on' : ''}" onclick="setFulfil('delivery')">${IC.home} Доставка</button>
+            <button class="seg ${deliverySel ? 'on' : ''} ${deliveryOff ? 'seg-off' : ''}" ${deliveryOff ? 'disabled' : ''} onclick="setFulfil('delivery')">${IC.home} Доставка</button>
         </div>
         ${deliverySel ? `
         <div class="delivery-box">
@@ -607,7 +694,13 @@ function renderCart() {
             <p class="pay-note">Оплата откроется в браузере: можно картой или через СБП — выбрать свой банк и подтвердить в его приложении.${NEED_EMAIL ? ' Кассовый чек придёт на этот e-mail.' : ''}</p>
         </div>`
         : PAYMENT_ONLINE ? `<p class="pay-note">Telegram попросит e-mail — на него придёт кассовый чек.</p>` : ''}
-        <div class="checkout"><button class="main-btn" onclick="checkout()">${PAYMENT_ONLINE ? 'Оплатить' : (deliverySel ? 'Оформить доставку' : 'Оформить заказ')} · ${money(orderTotal())}</button></div>`;
+        ${ordersOff ? `<div class="closed-note">${IC.warn}<span>${st.open
+                ? `Приём заказов на сегодня закрыт. Кофейня работает до ${st.closesAt}.`
+                : `Сейчас закрыто${st.opensAt ? `, откроемся в ${st.opensAt}` : ''}. ${hoursText()}`}</span></div>`
+          : deliveryOff ? `<div class="closed-note">${IC.warn}<span>Доставку принимаем до ${st.lastDelivery}. Сейчас доступен только самовывоз — до ${st.lastPickup}.</span></div>` : ''}
+        <div class="checkout"><button class="main-btn" ${ordersOff ? 'disabled' : ''} onclick="checkout()">${ordersOff
+            ? 'Заказы сейчас не принимаем'
+            : `${PAYMENT_ONLINE ? 'Оплатить' : (deliverySel ? 'Оформить доставку' : 'Оформить заказ')} · ${money(orderTotal())}`}</button></div>`;
 }
 
 // Пока счёт создаётся, кнопка заблокирована: второй клик по «Оплатить»
@@ -618,6 +711,15 @@ async function checkout() {
     if (!cartCount()) return;
     if (fulfillment === 'delivery' && (!delivery.entrance.trim() || !delivery.floor.trim() || !delivery.apt.trim())) {
         toast('Укажите подъезд, этаж и апартаменты');
+        return;
+    }
+    const st = shopStatus();
+    if (!st.pickup) {
+        toast(st.open ? `Приём заказов закрыт (до ${st.lastPickup})` : `Закрыто · откроемся в ${st.opensAt}`);
+        return;
+    }
+    if (fulfillment === 'delivery' && !st.delivery) {
+        toast(`Доставку принимаем до ${st.lastDelivery}`);
         return;
     }
     if (PAY_BY_LINK && NEED_EMAIL && !emailValid(payEmail)) {
@@ -1056,6 +1158,7 @@ async function boot() {
             if (r.data.tenant) PAYMENT_ONLINE = r.data.tenant.paymentMode === 'online';
             if (r.data.tenant) PAY_BY_LINK = !!r.data.tenant.payByLink;
             if (r.data.tenant) NEED_EMAIL = r.data.tenant.needEmail !== false;
+            HOURS = r.data.hours || null;
             const catNameById = new Map(r.data.categories.map((c) => [c.id, c.name]));
             // Порядок категорий — как в бэкенде; в ленту попадают только непустые.
             const menuCatIds = new Set(r.data.menu.map((p) => p.categoryId));
@@ -1079,6 +1182,18 @@ async function boot() {
         MENU = demoProducts();
         CATEGORIES_LIST = [...new Set(MENU.map((p) => p.categoryName))];
     }
+
+    // Приложение может висеть открытым через момент закрытия — раз в минуту
+    // сверяем статус и перерисовываем, если он изменился.
+    let lastShopKey = '';
+    setInterval(() => {
+        const st = shopStatus();
+        const key = `${st.open}|${st.pickup}|${st.delivery}`;
+        if (key === lastShopKey) return;
+        lastShopKey = key;
+        renderClosedBanner();
+        if (document.querySelector('#view-client-cart.active')) renderCart();
+    }, 60000);
 
     // Корзину поднимаем уже по загруженному меню — цены и стоп-лист свежие.
     restoreCart();

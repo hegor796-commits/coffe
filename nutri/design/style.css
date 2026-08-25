@@ -348,3 +348,22 @@ body.in-telegram .close-btn { display: none; }
 .pay-spinner { width: 26px; height: 26px; margin-top: 20px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--brand); animation: pay-spin 0.9s linear infinite; }
 @keyframes pay-spin { to { transform: rotate(360deg); } }
 .pay-cancel { margin-top: 22px; background: none; border: none; font-family: var(--f-sans); font-size: 13px; font-weight: 700; color: var(--ink-soft); cursor: pointer; padding: 8px 14px; }
+
+/* ---- Режим работы: закрыто / приём заказов окончен ---- */
+.shop-banner { display: none; }
+.shop-banner.show {
+    display: flex; align-items: flex-start; gap: 9px;
+    background: #FDF0E4; border: 1px solid #F0D3B4; border-radius: 16px;
+    padding: 12px 14px; margin: 0 0 14px; color: #7A4A18;
+    font-size: 13px; font-weight: 600; line-height: 1.45;
+}
+.shop-banner svg { flex-shrink: 0; margin-top: 1px; }
+.closed-note {
+    display: flex; align-items: flex-start; gap: 9px;
+    background: #FDF0E4; border: 1px solid #F0D3B4; border-radius: 16px;
+    padding: 12px 14px; margin: 14px 0 0; color: #7A4A18;
+    font-size: 12.5px; font-weight: 600; line-height: 1.45;
+}
+.closed-note svg { flex-shrink: 0; margin-top: 1px; }
+.seg.seg-off { opacity: 0.4; cursor: not-allowed; }
+.main-btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }

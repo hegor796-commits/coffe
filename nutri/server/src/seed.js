@@ -160,6 +160,37 @@ function applyPackagingFee(tenantId) {
 }
 
 /**
+ * Режим работы. Будни и выходные задаются одной строкой «08:00-21:00»;
+ * выходной день — пустая строка или «-». Отсечки приёма заказов считаются от
+ * закрытия: курьеру надо успеть доехать, баристе — приготовить.
+ */
+function applyHoursFromEnv(tenantId) {
+  const window = (raw, fallback) => {
+    const v = String(raw || '').trim() || fallback;
+    if (!v || v === '-') return null;                       // выходной
+    const m = v.match(/^(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})$/);
+    if (!m) {
+      console.error(`[hours] не разобрал «${v}», беру ${fallback}`);
+      return window(fallback, fallback);
+    }
+    return [m[1].padStart(5, '0'), m[2].padStart(5, '0')];
+  };
+
+  const weekday = window(process.env.SEED_HOURS_WEEKDAY, '08:00-21:00');
+  const weekend = window(process.env.SEED_HOURS_WEEKEND, '10:00-20:00');
+  const hours = {
+    tz: String(process.env.SEED_TIMEZONE || '').trim() || 'Europe/Moscow',
+    // Индекс 0 — понедельник.
+    days: [weekday, weekday, weekday, weekday, weekday, weekend, weekend],
+    lastOrderMin: {
+      delivery: Number(process.env.SEED_LAST_ORDER_DELIVERY_MIN || 60),
+      pickup: Number(process.env.SEED_LAST_ORDER_PICKUP_MIN || 30),
+    },
+  };
+  db.prepare('UPDATE tenants SET hours_json = ? WHERE id = ?').run(JSON.stringify(hours), tenantId);
+}
+
+/**
  * Ключи кассы ЮKassa — применяем на каждом старте, как и роли персонала.
  * Если они есть, оплата идёт по ссылке в браузере (карта + СБП), а не через
  * платёжную шторку Telegram.
@@ -266,6 +297,7 @@ export function seedDemo() {
     removeTapioka(existing.id);
     applyPackagingFee(existing.id);
     applyYooKassaFromEnv(existing.id);
+    applyHoursFromEnv(existing.id);
     return existing.id;
   }
 
@@ -595,5 +627,6 @@ export function seedDemo() {
   applyPhotoUpdates(tenantId);
   applyPackagingFee(tenantId);
   applyYooKassaFromEnv(tenantId);
+  applyHoursFromEnv(tenantId);
   return tenantId;
 }

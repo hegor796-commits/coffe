@@ -1,12 +1,24 @@
 // Слой БД: встроенная SQLite (node:sqlite), без нативных зависимостей.
 // Цены храним в рублях (целые) — под текущее меню кофейни.
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from './config.js';
 
 mkdirSync(config.dataDir, { recursive: true });
-export const db = new DatabaseSync(join(config.dataDir, 'app.db'));
+
+// Диагностика хранилища. Если Volume не примонтирован в DATA_DIR, файл ложится
+// в контейнер и пропадает при каждом деплое — по логу это видно сразу.
+const dbFile = join(config.dataDir, 'app.db');
+let existedBefore = false;
+let sizeBefore = 0;
+try { const st = statSync(dbFile); existedBefore = true; sizeBefore = st.size; } catch { /* первый запуск */ }
+console.log(existedBefore
+  ? `[db] найден ${dbFile} (${(sizeBefore / 1024).toFixed(0)} КБ) — данные с прошлого запуска на месте`
+  : `[db] ${dbFile} НЕ НАЙДЕН — создаём пустую базу.`
+    + ' Если это не первый деплой, значит Volume не примонтирован в DATA_DIR и данные теряются при каждом деплое');
+
+export const db = new DatabaseSync(dbFile);
 
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
@@ -23,6 +35,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   payment_provider_token TEXT,                      -- секрет провайдера (ЮKassa) из BotFather
   yk_shop_id    TEXT,                               -- shopId кассы ЮKassa (прямое API)
   yk_secret_key TEXT,                               -- секретный ключ кассы ЮKassa
+  hours_json    TEXT,                               -- режим работы (окна по дням + отсечки)
   delivery_enabled INTEGER NOT NULL DEFAULT 1,
   delivery_fee_rub INTEGER NOT NULL DEFAULT 50,
   delivery_note TEXT DEFAULT 'Доставляем только в апартаменты нашего здания.',
@@ -136,6 +149,8 @@ try { db.exec('ALTER TABLE tenants ADD COLUMN yk_shop_id TEXT'); } catch {}
 try { db.exec('ALTER TABLE tenants ADD COLUMN yk_secret_key TEXT'); } catch {}
 try { db.exec('ALTER TABLE orders ADD COLUMN payment_id TEXT'); } catch {}
 try { db.exec('ALTER TABLE orders ADD COLUMN customer_email TEXT'); } catch {}
+// Режим работы: JSON с окнами по дням недели и отсечками приёма заказов.
+try { db.exec('ALTER TABLE tenants ADD COLUMN hours_json TEXT'); } catch {}
 
 export function now() {
   return Date.now();
