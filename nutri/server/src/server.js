@@ -238,10 +238,23 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     let priced;
     try { priced = priceOrder(tenant.id, body.lines); }
     catch (e) {
-      // Диагностика: что именно прислал клиент и почему отклонили. Без неё
-      // «Недопустимая опция товара» невозможно расследовать по логам.
-      const ids = (body.lines || []).map((l) => `${l.productId}[${(l.optionIds || []).join(',')}]`).join(' ');
-      console.error(`[order] отклонён (${e.message}). tenant=${tenant.id} lines=${ids}`);
+      // Диагностика: что именно прислал клиент и почему отклонили. Для каждой
+      // позиции печатаем название товара, допустимые опции и какие из
+      // присланных лишние — сразу видно, старая ли это корзина/меню.
+      for (const l of (body.lines || [])) {
+        const p = db.prepare('SELECT name FROM products WHERE id = ? AND tenant_id = ?').get(l.productId, tenant.id);
+        const allowed = db.prepare(
+          `SELECT o.id, o.name FROM modifier_options o
+             JOIN product_modifier_groups pmg ON pmg.group_id = o.group_id
+            WHERE pmg.product_id = ?`,
+        ).all(l.productId);
+        const allowedIds = new Set(allowed.map((o) => o.id));
+        const bad = (l.optionIds || []).filter((id) => !allowedIds.has(id));
+        console.error(`[order] отклонён (${e.message}). tenant=${tenant.id}`
+          + ` товар=${p ? `«${p.name}»` : 'НЕ НАЙДЕН'} (${l.productId})`
+          + ` прислано=[${(l.optionIds || []).join(',')}] лишние=[${bad.join(',')}]`
+          + ` допустимо=${allowed.length} опц.`);
+      }
       return json(res, 400, { error: 'bad_order', message: e.message });
     }
 
