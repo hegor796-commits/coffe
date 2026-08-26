@@ -222,6 +222,11 @@ const server = http.createServer(async (req, res) => {
 async function apiRoutes(req, res, path, method, { tenant, user, role }) {
   // Загрузка приложения: инфо о кофейне, роль, меню.
   if (path === '/api/bootstrap' && method === 'GET') {
+    // Диагностика доставки кода: свежий мини-апп добавляет к GET параметр `_`
+    // для обхода кеша. Если он есть — на устройстве новый script.js. Если
+    // запросов нет вовсе, а заказы идут, значит меню отдаётся из кеша WebView.
+    const fresh = new URL(req.url, 'http://x').searchParams.has('_');
+    console.log(`[bootstrap] user=${user.id} role=${role} клиент=${fresh ? 'НОВЫЙ (обходит кеш)' : 'СТАРЫЙ (без обхода кеша)'}`);
     return json(res, 200, {
       tenant: { slug: tenant.slug, name: tenant.name, primaryColor: tenant.primary_color, paymentMode: tenant.payment_mode, deliveryEnabled: !!tenant.delivery_enabled, deliveryFee: tenant.delivery_fee_rub ?? 50, deliveryNote: tenant.delivery_note, packagingFee: tenant.packaging_fee_rub ?? 0,
         payByLink: tenant.payment_mode === 'online' && ykConfigured(tenant),
@@ -249,6 +254,10 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
       // Диагностика: что именно прислал клиент и почему отклонили. Для каждой
       // позиции печатаем название товара, допустимые опции и какие из
       // присланных лишние — сразу видно, старая ли это корзина/меню.
+      // Отличаем устаревшее меню от прочих отказов: если у позиции НИ ОДНА
+      // присланная опция не принадлежит товару, приложение работает по меню
+      // другого поколения (кеш WebView). Обычная ошибка так не выглядит.
+      let staleMenu = false;
       for (const l of (body.lines || [])) {
         const p = db.prepare('SELECT name FROM products WHERE id = ? AND tenant_id = ?').get(l.productId, tenant.id);
         const allowed = db.prepare(
@@ -257,11 +266,22 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
             WHERE pmg.product_id = ?`,
         ).all(l.productId);
         const allowedIds = new Set(allowed.map((o) => o.id));
-        const bad = (l.optionIds || []).filter((id) => !allowedIds.has(id));
+        const sent = l.optionIds || [];
+        const bad = sent.filter((id) => !allowedIds.has(id));
+        if (p && sent.length && bad.length === sent.length) staleMenu = true;
         console.error(`[order] отклонён (${e.message}). tenant=${tenant.id}`
           + ` товар=${p ? `«${p.name}»` : 'НЕ НАЙДЕН'} (${l.productId})`
-          + ` прислано=[${(l.optionIds || []).join(',')}] лишние=[${bad.join(',')}]`
+          + ` прислано=[${sent.join(',')}] лишние=[${bad.join(',')}]`
           + ` допустимо=${allowed.length} опц.`);
+      }
+      if (staleMenu) {
+        // Отдельный код, чтобы мини-апп не уходил в цикл «обновить меню» —
+        // обновлять бесполезно, пока приложение читает меню из кеша.
+        // Текст рассчитан на показ пользователю как есть.
+        return json(res, 400, {
+          error: 'menu_stale',
+          message: 'Приложение показывает устаревшее меню. Закройте его полностью и откройте заново',
+        });
       }
       return json(res, 400, { error: 'bad_order', message: e.message });
     }
