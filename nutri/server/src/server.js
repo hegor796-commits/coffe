@@ -273,6 +273,36 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
           + ` товар=${p ? `«${p.name}»` : 'НЕ НАЙДЕН'} (${l.productId})`
           + ` прислано=[${sent.join(',')}] лишние=[${bad.join(',')}]`
           + ` допустимо=${allowed.length} опц.`);
+
+        // Чем на самом деле являются отвергнутые id: их может не быть в базе
+        // вовсе (устаревшее меню) либо они могут принадлежать другой группе
+        // или другой кофейне — это уже расхождение привязок, а не кеш.
+        for (const oid of bad) {
+          const o = db.prepare(
+            `SELECT o.name, g.id AS gid, g.name AS gname, g.tenant_id AS tid
+               FROM modifier_options o JOIN modifier_groups g ON g.id = o.group_id
+              WHERE o.id = ?`,
+          ).get(oid);
+          if (!o) { console.error(`[order]    ${oid} — такой опции в базе НЕТ`); continue; }
+          const links = db.prepare('SELECT COUNT(*) n FROM product_modifier_groups WHERE group_id = ?').get(o.gid).n;
+          console.error(`[order]    ${oid} = «${o.name}» из группы «${o.gname}»`
+            + `${o.tid === tenant.id ? '' : ' ЧУЖОЙ КОФЕЙНИ'} — группа привязана к ${links} товарам`);
+        }
+        // Что клиент должен был получить в меню для этого товара.
+        if (p) {
+          const byGroup = db.prepare(
+            `SELECT g.name AS gname, o.id, o.name
+               FROM modifier_options o
+               JOIN product_modifier_groups pmg ON pmg.group_id = o.group_id
+               JOIN modifier_groups g ON g.id = o.group_id
+              WHERE pmg.product_id = ? ORDER BY g.sort, o.sort`,
+          ).all(l.productId);
+          const groupsSeen = [...new Set(byGroup.map((r) => r.gname))];
+          for (const gn of groupsSeen) {
+            const items = byGroup.filter((r) => r.gname === gn).map((r) => `${r.name}=${r.id.slice(0, 8)}`);
+            console.error(`[order]    актуальная «${gn}»: ${items.join(' ')}`);
+          }
+        }
       }
       if (staleMenu) {
         // Отдельный код, чтобы мини-апп не уходил в цикл «обновить меню» —
