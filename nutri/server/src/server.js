@@ -237,7 +237,13 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     const body = await readBody(req);
     let priced;
     try { priced = priceOrder(tenant.id, body.lines); }
-    catch (e) { return json(res, 400, { error: 'bad_order', message: e.message }); }
+    catch (e) {
+      // Диагностика: что именно прислал клиент и почему отклонили. Без неё
+      // «Недопустимая опция товара» невозможно расследовать по логам.
+      const ids = (body.lines || []).map((l) => `${l.productId}[${(l.optionIds || []).join(',')}]`).join(' ');
+      console.error(`[order] отклонён (${e.message}). tenant=${tenant.id} lines=${ids}`);
+      return json(res, 400, { error: 'bad_order', message: e.message });
+    }
 
     const fulfillment = body.fulfillment === 'delivery' ? 'delivery' : 'pickup';
     const d = body.delivery || {};

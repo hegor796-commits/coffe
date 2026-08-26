@@ -213,7 +213,19 @@ function clearCart() {
     fulfillment = 'pickup';
     delivery.entrance = delivery.floor = delivery.apt = '';
     const s = storage();
-    if (s) { try { s.removeItem(CART_KEY); } catch { /* не критично */ } }
+    if (!s) return;
+    // Чистим не только текущий ключ, но и все корзины прошлых схем (раньше ключ
+    // был без id пользователя). Иначе устаревшая корзина под старым ключом
+    // всплывала снова и снова с несовместимыми id позиций.
+    try {
+        s.removeItem(CART_KEY);
+        const kill = [];
+        for (let i = 0; i < s.length; i++) {
+            const k = s.key(i);
+            if (k && k.startsWith('lm:cart:')) kill.push(k);
+        }
+        kill.forEach((k) => s.removeItem(k));
+    } catch { /* не критично */ }
 }
 // Восстановление собираем заново по актуальному меню: товар мог уехать в
 // стоп-лист или сменить цену, пока приложение было закрыто.
