@@ -73,8 +73,16 @@ let ROLE = 'client';
 
 async function api(path, method, body) {
     try {
-        const res = await fetch(API_BASE + path, {
+        // Ответы API кешировать нельзя: WebView Telegram умеет отдать из кеша
+        // старый /api/bootstrap, и приложение соберёт заказ по меню прошлого
+        // поколения базы. Заголовка no-store некоторым клиентам мало, поэтому
+        // GET-запросы дополнительно разводим уникальным параметром.
+        const url = API_BASE + path + ((method || 'GET') === 'GET'
+            ? (path.includes('?') ? '&' : '?') + '_=' + Date.now()
+            : '');
+        const res = await fetch(url, {
             method: method || 'GET',
+            cache: 'no-store',
             headers: {
                 'Content-Type': 'application/json',
                 'X-Tenant': TENANT,

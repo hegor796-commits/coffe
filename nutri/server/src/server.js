@@ -26,7 +26,15 @@ function cors(res) {
 }
 function json(res, status, obj) {
   cors(res);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  // API кешировать нельзя. Без этих заголовков WebView Telegram спокойно
+  // отдаёт из своего кеша старый /api/bootstrap — меню оказывается из
+  // прошлого поколения базы, и заказ падает с «Недопустимая опция товара».
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    Pragma: 'no-cache',
+    Expires: '0',
+  });
   res.end(JSON.stringify(obj));
 }
 function readBody(req) {
