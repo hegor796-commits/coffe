@@ -186,7 +186,7 @@ function emailValid(v) { return /^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(String(v || '
 // Telegram выгружает WebView при сворачивании, поэтому корзина в памяти
 // пропадала вместе с ней. Держим её в localStorage: ключ на кофейню и на
 // пользователя, чтобы на общем устройстве заказы не смешивались.
-let CART_KEY = 'lm:cart:v1:anon';
+let CART_KEY = 'lm:cart:v2:anon';
 // E-mail для чека живёт отдельным ключом: корзина после оплаты чистится, а
 // адрес должен остаться — иначе клиент печатает его перед каждым заказом.
 let EMAIL_KEY = 'lm:email:v1:anon';
@@ -1278,7 +1278,7 @@ async function boot() {
         if (r.ok) {
             LIVE = true; ROLE = r.data.role;
             if (r.data.user && r.data.user.id) {
-                CART_KEY = `lm:cart:v1:${TENANT}:${r.data.user.id}`;
+                CART_KEY = `lm:cart:v2:${TENANT}:${r.data.user.id}`;
                 EMAIL_KEY = `lm:email:v1:${TENANT}:${r.data.user.id}`;
             }
             applyBootstrap(r.data);
