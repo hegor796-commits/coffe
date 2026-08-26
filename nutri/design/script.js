@@ -749,6 +749,17 @@ async function checkoutLive() {
     if (PAY_BY_LINK && NEED_EMAIL) body.email = payEmail.trim();
     const r = await api('/api/orders', 'POST', body);
     if (!r.ok) {
+        // Позиции в корзине ссылаются на устаревшее меню (например, кофейня
+        // пересобрала базу) — сама корзина уже не оформится. Чистим её и уводим
+        // человека в свежее меню, чтобы он не бился в «Недопустимую опцию».
+        if (r.data && (r.data.error === 'bad_order' || r.data.error === 'menu_changed')) {
+            clearCart();
+            updateCartBadge(); renderCart();
+            toast('Меню обновилось — соберите заказ заново');
+            await reloadMenu();
+            switchTab('client', 'menu');
+            return;
+        }
         toast((r.data && r.data.message) || 'Не удалось оформить заказ');
         return;
     }
@@ -1209,6 +1220,42 @@ function showAuthError(r) {
     document.querySelector('.preview-controls')?.remove();
 }
 
+// Разбор ответа /api/bootstrap в состояние приложения. Вынесено отдельно,
+// чтобы меню можно было перезагрузить на лету (reloadMenu), не перезапуская
+// всё приложение — например, после того как корзина оказалась несовместима с
+// обновившимся меню.
+function applyBootstrap(data) {
+    if (data.tenant && Number.isFinite(data.tenant.deliveryFee)) DELIVERY_FEE = data.tenant.deliveryFee;
+    if (data.tenant && Number.isFinite(data.tenant.packagingFee)) PACKAGING_FEE = data.tenant.packagingFee;
+    if (data.tenant) PAYMENT_ONLINE = data.tenant.paymentMode === 'online';
+    if (data.tenant) PAY_BY_LINK = !!data.tenant.payByLink;
+    if (data.tenant) NEED_EMAIL = data.tenant.needEmail !== false;
+    HOURS = data.hours || null;
+    MODIFIER_GROUPS = data.modifierGroups || [];
+    const catNameById = new Map(data.categories.map((c) => [c.id, c.name]));
+    const menuCatIds = new Set(data.menu.map((p) => p.categoryId));
+    CATEGORIES_LIST = data.categories.filter((c) => menuCatIds.has(c.id)).map((c) => c.name);
+    MENU = data.menu.map((p) => {
+        const categoryName = catNameById.get(p.categoryId) || '';
+        return {
+            id: p.id, name: p.name, price: p.price, available: p.available,
+            description: p.description || '',
+            photo_url: p.photoUrl || null,
+            categoryName,
+            catKey: catKeyFor(categoryName),
+            groups: p.groups || [],
+        };
+    });
+}
+// Перезагрузка меню на лету: тянем свежий bootstrap и перерисовываем витрину.
+async function reloadMenu() {
+    if (!LIVE) return;
+    const r = await api('/api/bootstrap');
+    if (!r.ok) return;
+    applyBootstrap(r.data);
+    renderCategories(); renderMenu();
+}
+
 async function boot() {
     initTelegramShell();
     const logoMarkEl = document.getElementById('logo-mark');
@@ -1222,28 +1269,7 @@ async function boot() {
                 CART_KEY = `lm:cart:v1:${TENANT}:${r.data.user.id}`;
                 EMAIL_KEY = `lm:email:v1:${TENANT}:${r.data.user.id}`;
             }
-            if (r.data.tenant && Number.isFinite(r.data.tenant.deliveryFee)) DELIVERY_FEE = r.data.tenant.deliveryFee;
-            if (r.data.tenant && Number.isFinite(r.data.tenant.packagingFee)) PACKAGING_FEE = r.data.tenant.packagingFee;
-            if (r.data.tenant) PAYMENT_ONLINE = r.data.tenant.paymentMode === 'online';
-            if (r.data.tenant) PAY_BY_LINK = !!r.data.tenant.payByLink;
-            if (r.data.tenant) NEED_EMAIL = r.data.tenant.needEmail !== false;
-            HOURS = r.data.hours || null;
-            MODIFIER_GROUPS = r.data.modifierGroups || [];
-            const catNameById = new Map(r.data.categories.map((c) => [c.id, c.name]));
-            // Порядок категорий — как в бэкенде; в ленту попадают только непустые.
-            const menuCatIds = new Set(r.data.menu.map((p) => p.categoryId));
-            CATEGORIES_LIST = r.data.categories.filter((c) => menuCatIds.has(c.id)).map((c) => c.name);
-            MENU = r.data.menu.map((p) => {
-                const categoryName = catNameById.get(p.categoryId) || '';
-                return {
-                    id: p.id, name: p.name, price: p.price, available: p.available,
-                    description: p.description || '',
-                    photo_url: p.photoUrl || null,
-                    categoryName,
-                    catKey: catKeyFor(categoryName),
-                    groups: p.groups || [],
-                };
-            });
+            applyBootstrap(r.data);
         } else {
             showAuthError(r);
             return;
