@@ -200,17 +200,19 @@ const server = http.createServer(async (req, res) => {
     if (path === '/api/health') return json(res, 200, { ok: true, time: now() });
 
     // --- Админка платформы (супер-админ) ---
-    if (path.startsWith('/api/admin/')) return adminRoutes(req, res, path, method);
+    if (path.startsWith('/api/admin/')) return await adminRoutes(req, res, path, method);
 
     // --- API мини-аппа (требует авторизацию) ---
     if (path.startsWith('/api/')) {
       const auth = authenticate(req);
       if (auth.error) return json(res, auth.error === 'unauthorized' ? 401 : 400, { error: auth.error, reason: auth.reason });
-      return apiRoutes(req, res, path, method, auth);
+      // await обязателен: без него отказ промиса не попадает в catch ниже
+      // и роняет весь процесс — один битый заказ убивал сервер.
+      return await apiRoutes(req, res, path, method, auth);
     }
 
     // --- Иначе статика мини-аппа ---
-    if (method === 'GET') return serveStatic(req, res, path);
+    if (method === 'GET') return await serveStatic(req, res, path);
     res.writeHead(405); res.end('Method not allowed');
   } catch (e) {
     console.error('[error]', e);
@@ -282,7 +284,7 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
             `SELECT o.name, g.id AS gid, g.name AS gname, g.tenant_id AS tid
                FROM modifier_options o JOIN modifier_groups g ON g.id = o.group_id
               WHERE o.id = ?`,
-          ).get(oid);
+          ).get(String(oid));
           if (!o) { console.error(`[order]    ${oid} — такой опции в базе НЕТ`); continue; }
           const links = db.prepare('SELECT COUNT(*) n FROM product_modifier_groups WHERE group_id = ?').get(o.gid).n;
           console.error(`[order]    ${oid} = «${o.name}» из группы «${o.gname}»`

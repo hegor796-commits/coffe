@@ -91,7 +91,13 @@ export function priceOrder(tenantId, lines) {
     if (!p.available) throw new Error(`«${p.name}» сейчас в стоп-листе`);
 
     const qty = Math.max(1, Math.min(50, Number(line.qty) || 1));
-    const optionIds = Array.isArray(line.optionIds) ? line.optionIds : [];
+    // Разглаживаем и приводим к строкам: мини-апп хранит выбор как
+    // {группа: [id, ...]}, и версия с ошибкой присылала массив массивов.
+    // Клиент мог остаться закешированным, поэтому чиним на входе.
+    const optionIds = (Array.isArray(line.optionIds) ? line.optionIds : [])
+      .flat(Infinity)
+      .filter((v) => typeof v === 'string' || typeof v === 'number')
+      .map(String);
     let unit = p.price_rub;
     const modNames = [];
 

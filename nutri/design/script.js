@@ -620,7 +620,10 @@ function addLine(product, selected, qty) {
     else cart[key] = {
         productId: product.id, name: product.name, catKey: product.catKey,
         mods: modsText(product, selected), unit: unitPrice(product, selected), qty,
-        optionIds: Object.values(selected),
+        // selected — это {группа: [id, ...]}, поэтому обязательно flat():
+        // без него на сервер уезжал массив массивов, и ни одна опция не
+        // совпадала с меню («Недопустимая опция товара»).
+        optionIds: Object.values(selected).flat(),
     };
     saveCart();
     updateCartBadge();
