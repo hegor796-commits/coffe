@@ -179,9 +179,14 @@ export const PENDING_TTL_MIN = Number(process.env.PENDING_ORDER_TTL_MIN || 20);
  */
 export function expirePendingOrders() {
   const deadline = now() - PENDING_TTL_MIN * 60_000;
+  // ВАЖНО: заказы с payment_id (ЮKassa) здесь НЕ гасим. Их можно гасить только
+  // спросив у ЮKassa, не оплачен ли счёт на самом деле, — иначе оплаченный
+  // заказ уходит в отмену, а деньги остаются взяты. Этим занимается
+  // reconcilePendingOrders в server.js. Здесь — только заказы без счёта ЮKassa
+  // (оффлайн-оплата, шторка Telegram).
   const r = db.prepare(
     `UPDATE orders SET payment_status = 'expired', status = 'auto_cancelled', updated_at = ?
-      WHERE payment_status = 'pending' AND created_at < ?`,
+      WHERE payment_status = 'pending' AND payment_id IS NULL AND created_at < ?`,
   ).run(now(), deadline);
   return r.changes || 0;
 }

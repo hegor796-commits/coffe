@@ -127,6 +127,60 @@ async function markOrderPaid(tenant, order) {
   return paid;
 }
 
+/**
+ * Сверка «зависших» онлайн-заказов с ЮKassa. Вебхук может быть не настроен, а
+ * клиент — не довести опрос статуса (закрыл браузер, свернул Telegram). Тогда
+ * оплаченный заказ остаётся pending и рискует сгореть по TTL. Поэтому спрашиваем
+ * ЮKassa сами:
+ *  - succeeded → проводим заказ (markOrderPaid поднимет даже уже отменённый —
+ *    деньги-то взяты);
+ *  - canceled  → гасим;
+ *  - всё ещё pending и старше TTL → гасим как брошенный.
+ * Дополнительно проверяем недавно отменённые счета: если заказ успели погасить
+ * до того, как оплата подтвердилась, — восстанавливаем его.
+ */
+async function reconcilePendingOrders() {
+  const lookback = now() - 24 * 60 * 60_000;   // отменённые за сутки ещё можно спасти
+  const deadline = now() - PENDING_TTL_MIN * 60_000;
+  const rows = db.prepare(
+    `SELECT id, tenant_id, payment_id, payment_status, created_at FROM orders
+      WHERE payment_id IS NOT NULL
+        AND ( payment_status = 'pending'
+           OR (payment_status = 'expired' AND updated_at >= ?) )`,
+  ).all(lookback);
+  if (!rows.length) return;
+
+  const tenantCache = new Map();
+  const tenantOf = (id) => {
+    if (!tenantCache.has(id)) tenantCache.set(id, db.prepare('SELECT * FROM tenants WHERE id = ?').get(id));
+    return tenantCache.get(id);
+  };
+
+  for (const row of rows) {
+    const tenant = tenantOf(row.tenant_id);
+    if (!tenant || !ykConfigured(tenant)) continue;
+    let check;
+    try { check = await getPayment(tenant, row.payment_id); }
+    catch (e) { console.error('[reconcile] getPayment', e && e.message); continue; }
+    if (!check.ok) continue;
+
+    if (check.status === 'succeeded' && check.paid) {
+      const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(row.id);
+      const paid = await markOrderPaid(tenant, o);
+      if (paid) console.log(`[reconcile] заказ ${paid.number} оплачен по факту — проведён и отправлен баристе`);
+    } else if (check.status === 'canceled') {
+      if (row.payment_status === 'pending') {
+        db.prepare("UPDATE orders SET payment_status = 'expired', status = 'auto_cancelled', updated_at = ? WHERE id = ? AND payment_status = 'pending'")
+          .run(now(), row.id);
+      }
+    } else if (row.payment_status === 'pending' && row.created_at < deadline) {
+      // Счёт так и не оплачен и уже просрочен — гасим как брошенный.
+      db.prepare("UPDATE orders SET payment_status = 'expired', status = 'auto_cancelled', updated_at = ? WHERE id = ? AND payment_status = 'pending'")
+        .run(now(), row.id);
+    }
+  }
+}
+
 async function notifyClientStatus(tenant, o) {
   const map = {
     accepted: `✅ Заказ ${o.number} принят.`,
@@ -797,13 +851,18 @@ async function bootstrap() {
   });
 
   // Брошенные счета гасим и в фоне: клиент может больше не открыть приложение,
-  // а заказ не должен вечно висеть неоплаченным.
-  const sweep = () => {
+  // а заказ не должен вечно висеть неоплаченным. Но сперва — сверка с ЮKassa:
+  // вдруг «брошенный» на деле оплачен. Сверка идёт первой, чтобы такой заказ
+  // был проведён, а не погашен.
+  const sweep = async () => {
+    try { await reconcilePendingOrders(); }
+    catch (e) { console.error('[reconcile]', e && e.message); }
     const n = expirePendingOrders();
-    if (n) console.log(`[orders] погашено брошенных счетов: ${n}`);
+    if (n) console.log(`[orders] погашено брошенных счетов (без ЮKassa): ${n}`);
   };
+  // На старте — сразу: восстановит заказ, оплаченный, но потерянный до перезапуска.
   sweep();
-  setInterval(sweep, 5 * 60_000).unref();
+  setInterval(sweep, 2 * 60_000).unref();
 
   // Автоустановка вебхуков всем ботам (если известен внешний адрес).
   if (config.autoSetWebhooks && config.publicUrl) {
