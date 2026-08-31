@@ -59,6 +59,7 @@ const IC = {
     bag: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8h12l-1 12H7z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg>`,
     warn: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17H2.5z"/><path d="M12 10v4M12 17.5h.01"/></svg>`,
     home: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-6 8 6"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></svg>`,
+    phone: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/></svg>`,
 };
 
 // ============================================================
@@ -167,19 +168,24 @@ let PAY_BY_LINK = false;         // true — оплата по ссылке в �
 let NEED_EMAIL = true;           // нужен ли e-mail (только при облачной кассе)
 let HOURS = null;                // режим работы кофейни (из bootstrap)
 let MODIFIER_GROUPS = [];        // добавки для экрана стоп-листа (только персоналу)
+let PHONE = '';                  // телефон кофейни (кнопка «Позвонить»)
+let DELIVERY_ENABLED = true;     // доставка включена и не на паузе
 let payEmail = '';               // e-mail для кассового чека (запоминаем между заказами)
+let orderComment = '';           // комментарий клиента к текущему заказу
 const delivery = { entrance: '', floor: '', apt: '' };
 let baristaFilter = 'active';
 
 function findProduct(id) { return MENU.find((p) => p.id === id); }
 function setFulfil(mode) {
-    if (mode === 'delivery' && !shopStatus().delivery) {
-        toast(`Доставку принимаем до ${shopStatus().lastDelivery}`);
-        return;
+    if (mode === 'delivery') {
+        if (!DELIVERY_ENABLED) { toast('Доставка сейчас недоступна'); return; }
+        if (!shopStatus().delivery) { toast(`Доставку принимаем до ${shopStatus().lastDelivery}`); return; }
     }
     fulfillment = mode; saveCart(); renderCart();
 }
 function setDeliveryField(field, val) { delivery[field] = val; saveCart(); }
+// Комментарий не перерисовывает корзину — иначе поле теряет фокус на каждом символе.
+function setOrderComment(val) { orderComment = val; saveCart(); }
 // E-mail не перерисовывает корзину: иначе поле теряет фокус на каждом символе.
 function setPayEmail(val) {
     payEmail = val;
@@ -212,6 +218,7 @@ function saveCart() {
             at: Date.now(),
             fulfillment,
             delivery,
+            comment: orderComment,
             lines: Object.values(cart).map((v) => ({ productId: v.productId, optionIds: v.optionIds, qty: v.qty })),
         }));
     } catch { /* переполнение квоты — корзина просто не переживёт перезапуск */ }
@@ -220,6 +227,7 @@ function clearCart() {
     cart = {};
     fulfillment = 'pickup';
     delivery.entrance = delivery.floor = delivery.apt = '';
+    orderComment = '';
     const s = storage();
     if (!s) return;
     // Чистим не только текущий ключ, но и все корзины прошлых схем (раньше ключ
@@ -280,6 +288,7 @@ function restoreCart() {
         delivery.floor = saved.delivery.floor || '';
         delivery.apt = saved.delivery.apt || '';
     }
+    if (typeof saved.comment === 'string') orderComment = saved.comment;
     if (dropped) toast(dropped === 1 ? 'Одна позиция больше недоступна' : `${dropped} позиции больше недоступны`);
     saveCart();
 }
@@ -348,7 +357,7 @@ function switchTab(role, tab) {
     else if (role === 'barista' && (tab === 'feed' || tab === 'archive')) { LIVE ? loadBaristaOrders().then(renderBarista) : renderBarista(); }
     else if (role === 'barista' && tab === 'stop') renderStopList();
     else if (role === 'owner' && tab === 'menu') renderOwnerMenu();
-    else if (role === 'owner' && tab === 'summary') loadOwnerSummary();
+    else if (role === 'owner' && tab === 'summary') { loadOwnerSummary(); loadOwnerSettings(); }
     else if (role === 'owner' && tab === 'team') loadOwnerTeam();
 }
 
@@ -684,8 +693,9 @@ function renderCart() {
     }).join('');
     const deliverySel = fulfillment === 'delivery';
     const st = shopStatus();
-    // Доставка закрывается раньше самовывоза — курьеру нужно успеть доехать.
-    const deliveryOff = !st.delivery;
+    // Доставка закрывается раньше самовывоза (курьеру нужно доехать) или её мог
+    // приостановить владелец.
+    const deliveryOff = !st.delivery || !DELIVERY_ENABLED;
     const ordersOff = !st.pickup;
     wrap.innerHTML = `
         <div class="brand-bar"><div class="wordmark">Любовь-Марковь</div></div>
@@ -707,6 +717,11 @@ function renderCart() {
             <label class="field"><span>Номер апартаментов</span><input value="${delivery.apt}" oninput="setDeliveryField('apt',this.value)" placeholder="Напр. 512"></label>
         </div>` : ''}
 
+        <label class="field cart-comment"><span>Комментарий к заказу</span>
+            <input value="${orderComment.replace(/"/g, '&quot;')}" maxlength="300"
+                   oninput="setOrderComment(this.value)" placeholder="Напр. без сахара, погорячее"></label>
+        ${PHONE ? `<a class="call-btn" href="tel:${PHONE.replace(/[^\d+]/g, '')}">${IC.phone} Позвонить в кофейню</a>` : ''}
+
         <div class="summary">
             <div class="row"><span>Позиции</span><span>${cartCount()} шт.</span></div>
             <div class="row"><span>Получение</span><span>${deliverySel ? 'Доставка в апартаменты' : 'Самовывоз из кофейни'}</span></div>
@@ -726,7 +741,9 @@ function renderCart() {
         ${ordersOff ? `<div class="closed-note">${IC.warn}<span>${st.open
                 ? `Приём заказов на сегодня закрыт. Кофейня работает до ${st.closesAt}.`
                 : `Сейчас закрыто${st.opensAt ? `, откроемся в ${st.opensAt}` : ''}. ${hoursText()}`}</span></div>`
-          : deliveryOff ? `<div class="closed-note">${IC.warn}<span>Доставку принимаем до ${st.lastDelivery}. Сейчас доступен только самовывоз — до ${st.lastPickup}.</span></div>` : ''}
+          : deliveryOff ? `<div class="closed-note">${IC.warn}<span>${!DELIVERY_ENABLED
+                ? 'Доставка временно приостановлена. Сейчас доступен только самовывоз.'
+                : `Доставку принимаем до ${st.lastDelivery}. Сейчас доступен только самовывоз — до ${st.lastPickup}.`}</span></div>` : ''}
         <div class="checkout"><button class="main-btn" ${ordersOff ? 'disabled' : ''} onclick="checkout()">${ordersOff
             ? 'Заказы сейчас не принимаем'
             : `${PAYMENT_ONLINE ? 'Оплатить' : (deliverySel ? 'Оформить доставку' : 'Оформить заказ')} · ${money(orderTotal())}`}</button></div>`;
@@ -769,6 +786,7 @@ async function checkoutLive() {
     const lines = Object.values(cart).map((v) => ({ productId: v.productId, optionIds: v.optionIds, qty: v.qty }));
     const body = { fulfillment, lines };
     if (fulfillment === 'delivery') body.delivery = { ...delivery };
+    if (orderComment.trim()) body.comment = orderComment.trim();
     if (PAY_BY_LINK && NEED_EMAIL) body.email = payEmail.trim();
     const r = await api('/api/orders', 'POST', body);
     if (!r.ok) {
@@ -978,12 +996,21 @@ function renderBarista() {
         : '<div class="empty-note">Активных заказов нет.<br>Новые появятся здесь автоматически.</div>';
 
     const done = baristaOrders.filter((o) => !ACTIVE_STATUSES.includes(o.status));
+    // Состав заказа в архиве раскрывается по тапу — в том числе у отменённых:
+    // владелец хочет видеть, что было в отменённом заказе.
     document.getElementById('barista-archive').innerHTML = done.length ? done.map((o) => `
-        <div class="order-card">
-            <div class="order-left"><span class="order-ic">${IC.book}</span>
-                <div class="order-info"><span class="order-id">Заказ ${o.number}</span><span class="order-date">${o.ts} · ${o.customer}</span></div>
+        <div class="order-card archive-card" onclick="this.classList.toggle('open')">
+            <div class="order-row">
+                <div class="order-left"><span class="order-ic">${IC.book}</span>
+                    <div class="order-info"><span class="order-id">Заказ ${o.number}</span><span class="order-date">${o.ts} · ${o.customer}</span></div>
+                </div>
+                <span class="pill ${STATUS_CLASS[o.status]}">${o.statusLabel || STATUS_TEXT[o.status]}</span>
             </div>
-            <span class="pill ${STATUS_CLASS[o.status]}">${o.statusLabel || STATUS_TEXT[o.status]}</span>
+            <div class="archive-detail">
+                <ul class="ticket-lines">${(o.items || []).map((it) => `<li><span class="ln-qty">${it.qty}×</span>${it.name}${it.mods ? ` <span class="ln-mods">· ${it.mods}</span>` : ''}</li>`).join('')}</ul>
+                ${o.comment ? `<div class="ticket-comment">💬 ${o.comment}</div>` : ''}
+                <div class="archive-total">${money(o.total)}${o.fulfillment === 'delivery' && o.address ? ` · 🛵 ${o.address}` : ''}</div>
+            </div>
         </div>`).join('') : '<div class="empty-note">Архив пуст.</div>';
 }
 function ticketHTML(o) {
@@ -1006,6 +1033,7 @@ function ticketHTML(o) {
             ${o.fulfillment === 'delivery' ? IC.home + ' Доставка · ' + o.address : IC.bag + ' Самовывоз'}
         </div>
         <ul class="ticket-lines">${lines}</ul>
+        ${o.comment ? `<div class="ticket-comment">💬 ${o.comment}</div>` : ''}
         <div class="ticket-foot">
             <span class="ticket-total">${money(o.total)}</span>
             <span class="timer">⏱ ${o.ts}</span>
@@ -1143,15 +1171,59 @@ async function toggleStopOption(idList, available) {
 function renderOwnerMenu() {
     const wrap = document.getElementById('owner-menu-list');
     if (!wrap) return;
+    // Тап по позиции — редактирование цены/названия/наличия (только LIVE).
     wrap.innerHTML = MENU.map((p) => `
-        <div class="list-row">
+        <div class="list-row${LIVE ? ' editable' : ''}" ${LIVE ? `onclick="openProductEdit('${p.id}')"` : ''}>
             <div class="lr-ic">${cupArt()}</div>
             <div class="lr-main">
                 <div class="lr-title">${p.name}</div>
                 <div class="lr-sub">${p.categoryName}${p.available ? '' : ' · в стопе'}</div>
             </div>
-            <div class="lr-price">${money(p.price)}</div>
+            <div class="lr-price">${money(p.price)}${LIVE ? ' ✏️' : ''}</div>
         </div>`).join('');
+}
+
+// Шторка редактирования товара владельцем — цена, название, наличие.
+function openProductEdit(productId) {
+    const p = findProduct(productId);
+    if (!p) return;
+    const el = document.getElementById('sheet');
+    el.innerHTML = `
+        <div class="sheet-scrim" onclick="closeSheet()"></div>
+        <div class="sheet-panel">
+            <div class="sheet-grab"></div>
+            <div class="sheet-head">
+                <div><div class="sheet-name">Редактировать</div><div class="sheet-base">${p.categoryName}</div></div>
+                <button class="sheet-x" onclick="closeSheet()" aria-label="Закрыть">✕</button>
+            </div>
+            <label class="field"><span>Название</span>
+                <input id="edit-name" value="${p.name.replace(/"/g, '&quot;')}" maxlength="120"></label>
+            <label class="field"><span>Цена, ₽</span>
+                <input id="edit-price" inputmode="numeric" value="${p.price}"></label>
+            <label class="edit-toggle">
+                <span>В наличии</span>
+                <label class="switch"><input type="checkbox" id="edit-avail" ${p.available ? 'checked' : ''}><span class="slider"></span></label>
+            </label>
+            <div class="sheet-foot">
+                <button class="main-btn auto" onclick="saveProductEdit('${p.id}')">Сохранить</button>
+            </div>
+        </div>`;
+    requestAnimationFrame(() => el.classList.add('show'));
+}
+async function saveProductEdit(productId) {
+    const name = document.getElementById('edit-name').value.trim();
+    const price = Math.round(Number(document.getElementById('edit-price').value));
+    const available = document.getElementById('edit-avail').checked;
+    if (!name) { toast('Название не может быть пустым'); return; }
+    if (!Number.isFinite(price) || price < 0) { toast('Некорректная цена'); return; }
+    const r = await api('/api/staff/product', 'POST', { productId, name, price, available });
+    if (!r.ok) { toast((r.data && r.data.message) || 'Не удалось сохранить'); return; }
+    // Обновляем локально и перерисовываем — без перезагрузки всего меню.
+    const p = findProduct(productId);
+    if (p) { p.name = name; p.price = price; p.available = available; }
+    closeSheet();
+    renderOwnerMenu(); renderMenu();
+    toast('Сохранено ✓');
 }
 async function loadOwnerSummary() {
     if (!LIVE) return;   // демо-цифры уже в вёрстке статично
@@ -1163,6 +1235,8 @@ async function loadOwnerSummary() {
     if (vals[1]) vals[1].textContent = s.count;
     if (vals[2]) vals[2].textContent = money(s.avg);
     if (vals[3]) vals[3].textContent = s.cancelled;
+    const cl = document.getElementById('stat-clients');
+    if (cl && s.clients !== undefined) cl.textContent = s.clients;
     const bars = document.querySelectorAll('#view-owner-summary .bars .bar');
     const shownHours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
     const max = Math.max(1, ...shownHours.map((h) => s.hours[h] || 0));
@@ -1173,6 +1247,69 @@ async function loadOwnerSummary() {
         const span = bar.querySelector('span'); if (span) span.textContent = h;
     });
 }
+// Настройки кофейни у владельца: доставка (вкл/пауза) и телефон.
+let ownerSettings = { phone: '', deliveryEnabled: true, deliveryPausedUntil: 0 };
+async function loadOwnerSettings() {
+    if (!LIVE) return;
+    const r = await api('/api/staff/settings');
+    if (!r.ok) return;
+    ownerSettings = r.data;
+    renderOwnerSettings();
+}
+function renderOwnerSettings() {
+    const wrap = document.getElementById('owner-settings');
+    if (!wrap) return;
+    const paused = ownerSettings.deliveryPausedUntil && ownerSettings.deliveryPausedUntil > Date.now();
+    const pauseTime = paused ? new Date(ownerSettings.deliveryPausedUntil).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
+    wrap.innerHTML = `
+        <h3>Доставка и контакты</h3>
+        <label class="edit-toggle">
+            <span>Доставка включена</span>
+            <label class="switch"><input type="checkbox" id="set-deliv" ${ownerSettings.deliveryEnabled ? 'checked' : ''} onchange="toggleDelivery(this.checked)"><span class="slider"></span></label>
+        </label>
+        ${ownerSettings.deliveryEnabled ? `
+        <div class="pause-row">
+            ${paused
+                ? `<div class="pause-note">⏸ Доставка на паузе до ${pauseTime}</div>
+                   <button class="btn-sm btn-advance" onclick="setDeliveryPause(0)">Возобновить</button>`
+                : `<span class="pause-label">Пауза доставки:</span>
+                   <button class="btn-sm btn-ghost" onclick="setDeliveryPause(60)">на 1 ч</button>
+                   <button class="btn-sm btn-ghost" onclick="setDeliveryPause('today')">до утра</button>`}
+        </div>` : ''}
+        <label class="field"><span>Телефон кофейни</span>
+            <input id="set-phone" inputmode="tel" value="${(ownerSettings.phone || '').replace(/"/g, '&quot;')}" placeholder="+7 999 123-45-67">
+        </label>
+        <button class="btn-sm btn-primary" onclick="saveOwnerPhone()">Сохранить телефон</button>`;
+}
+async function toggleDelivery(on) {
+    const r = await api('/api/staff/settings', 'POST', { deliveryEnabled: on });
+    if (!r.ok) { toast('Не удалось изменить'); return; }
+    ownerSettings.deliveryEnabled = on;
+    renderOwnerSettings();
+    toast(on ? 'Доставка включена' : 'Доставка выключена');
+}
+async function setDeliveryPause(kind) {
+    let minutes = 0;
+    if (kind === 60) minutes = 60;
+    else if (kind === 'today') {
+        // До 8 утра следующего дня — грубо «до утра».
+        const d = new Date(); d.setHours(24 + 8, 0, 0, 0);
+        minutes = Math.round((d.getTime() - Date.now()) / 60000);
+    }
+    const r = await api('/api/staff/delivery-pause', 'POST', { minutes });
+    if (!r.ok) { toast('Не удалось'); return; }
+    ownerSettings.deliveryPausedUntil = r.data.deliveryPausedUntil || 0;
+    renderOwnerSettings();
+    toast(minutes ? 'Доставка на паузе' : 'Доставка возобновлена');
+}
+async function saveOwnerPhone() {
+    const phone = document.getElementById('set-phone').value.trim();
+    const r = await api('/api/staff/settings', 'POST', { phone });
+    if (!r.ok) { toast('Не удалось сохранить'); return; }
+    ownerSettings.phone = phone;
+    toast('Телефон сохранён ✓');
+}
+
 async function loadOwnerTeam() {
     if (!LIVE) return;   // демо-состав уже в вёрстке статично
     const r = await api('/api/staff/list');
@@ -1255,6 +1392,8 @@ function applyBootstrap(data) {
     if (data.tenant) NEED_EMAIL = data.tenant.needEmail !== false;
     HOURS = data.hours || null;
     MODIFIER_GROUPS = data.modifierGroups || [];
+    if (data.tenant) PHONE = data.tenant.phone || '';
+    if (data.tenant) DELIVERY_ENABLED = data.tenant.deliveryEnabled !== false;
     const catNameById = new Map(data.categories.map((c) => [c.id, c.name]));
     const menuCatIds = new Set(data.menu.map((p) => p.categoryId));
     CATEGORIES_LIST = data.categories.filter((c) => menuCatIds.has(c.id)).map((c) => c.name);
@@ -1283,6 +1422,20 @@ async function boot() {
     initTelegramShell();
     const logoMarkEl = document.getElementById('logo-mark');
     if (logoMarkEl) logoMarkEl.innerHTML = logoMark();
+
+    // Переключатель ролей — только для демо вне Telegram. Внутри Telegram он не
+    // нужен клиенту, но раньше висел в разметке и на медленном интернете мелькал
+    // 10–15 секунд, пока не придёт bootstrap. Прячем сразу, ещё до запроса;
+    // владельцу вернём его ниже (уже без кнопки «Клиент»).
+    const willBeLive = !!(tg && tg.initData && API_BASE && !API_BASE.includes('REPLACE-WITH'));
+    const previewControls = document.querySelector('.preview-controls');
+    if (willBeLive && previewControls) previewControls.hidden = true;
+    // Пока грузится меню (на плохой связи это долго) — показываем, что идёт
+    // загрузка, а не пустой экран.
+    if (willBeLive) {
+        const grid = document.getElementById('menu-grid');
+        if (grid) grid.innerHTML = '<div class="empty-note" style="grid-column:1/-1">Загружаем меню…</div>';
+    }
 
     if (tg && tg.initData && API_BASE && !API_BASE.includes('REPLACE-WITH')) {
         const r = await api('/api/bootstrap');
@@ -1330,11 +1483,12 @@ async function boot() {
         } else {
             await loadBaristaOrders(); renderBarista();
             if (ROLE === 'owner' || ROLE === 'manager') {
-                // Владелец/менеджер часто работает и за стойкой — оставляем
+                // Владелец/менеджер часто работает и за стойкой — возвращаем
                 // мини-переключатель «Бариста / Владелец» (без «Клиент»).
                 switcher?.querySelector('#rs-client')?.remove();
+                if (switcher) switcher.hidden = false;
                 switchRole('owner');
-                loadOwnerSummary(); loadOwnerTeam();   // сразу подтягиваем реальные цифры
+                loadOwnerSummary(); loadOwnerSettings(); loadOwnerTeam();   // сразу подтягиваем реальные цифры
             } else {
                 switcher?.remove();
                 switchRole('barista');

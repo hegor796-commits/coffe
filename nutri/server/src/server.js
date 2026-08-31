@@ -71,6 +71,7 @@ function orderPublic(o) {
   return {
     id: o.id, number: o.number, status: o.status, statusLabel: STATUS_LABEL[o.status] || o.status,
     fulfillment: o.fulfillment, address: addrString(o), total: o.total_rub,
+    comment: o.comment || '',
     items: JSON.parse(o.items_json), createdAt: o.created_at, updatedAt: o.updated_at,
   };
 }
@@ -105,7 +106,8 @@ async function notifyStaffNewOrder(tenant, o) {
   const items = JSON.parse(o.items_json)
     .map((it) => `• ${it.qty}× ${it.name}${it.mods ? ` (${it.mods})` : ''}`).join('\n');
   const head = o.fulfillment === 'delivery' ? `🛵 Доставка · ${addrString(o)}` : '🛍 Самовывоз';
-  const text = `🆕 <b>Новый заказ ${o.number}</b>\n${head}\n${items}\nСумма: ${o.total_rub} ₽`;
+  const note = o.comment ? `\n💬 <i>${o.comment}</i>` : '';
+  const text = `🆕 <b>Новый заказ ${o.number}</b>\n${head}\n${items}${note}\nСумма: ${o.total_rub} ₽`;
   const kb = webAppBase ? webAppButton('Открыть ленту', `${webAppBase}/?t=${tenant.slug}`) : undefined;
   for (const s of staff) await sendMessage(tenant.bot_token, s.tg_user_id, text, kb);
 }
@@ -283,8 +285,20 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     // запросов нет вовсе, а заказы идут, значит меню отдаётся из кеша WebView.
     const fresh = new URL(req.url, 'http://x').searchParams.has('_');
     console.log(`[bootstrap] user=${user.id} role=${role} клиент=${fresh ? 'НОВЫЙ (обходит кеш)' : 'СТАРЫЙ (без обхода кеша)'}`);
+    // Запоминаем клиента для счётчика «сколько человек пользуется ботом».
+    const uname = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Гость';
+    db.prepare(
+      `INSERT INTO clients (tenant_id, tg_user_id, name, first_seen) VALUES (?,?,?,?)
+       ON CONFLICT(tenant_id, tg_user_id) DO UPDATE SET name = excluded.name`,
+    ).run(tenant.id, String(user.id), uname, now());
+    // Доставка доступна, если включена и не поставлена на паузу владельцем.
+    const delivPaused = tenant.delivery_paused_until && tenant.delivery_paused_until > now();
     return json(res, 200, {
-      tenant: { slug: tenant.slug, name: tenant.name, primaryColor: tenant.primary_color, paymentMode: tenant.payment_mode, deliveryEnabled: !!tenant.delivery_enabled, deliveryFee: tenant.delivery_fee_rub ?? 50, deliveryNote: tenant.delivery_note, packagingFee: tenant.packaging_fee_rub ?? 0,
+      tenant: { slug: tenant.slug, name: tenant.name, primaryColor: tenant.primary_color, paymentMode: tenant.payment_mode,
+        deliveryEnabled: !!tenant.delivery_enabled && !delivPaused,
+        deliveryPausedUntil: delivPaused ? tenant.delivery_paused_until : 0,
+        deliveryFee: tenant.delivery_fee_rub ?? 50, deliveryNote: tenant.delivery_note, packagingFee: tenant.packaging_fee_rub ?? 0,
+        phone: tenant.phone || '',
         payByLink: tenant.payment_mode === 'online' && ykConfigured(tenant),
         needEmail: config.receiptEnabled },
       role,
@@ -391,10 +405,16 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
         message: `Заказы принимаем до ${shop.lastPickup}. Кофейня закроется в ${shop.closesAt}` });
     }
     if (fulfillment === 'delivery') {
-      if (!tenant.delivery_enabled) return json(res, 400, { error: 'delivery_off' });
+      if (!tenant.delivery_enabled) return json(res, 400, { error: 'delivery_off', message: 'Доставка недоступна' });
+      // Владелец мог поставить доставку на паузу (например, курьер занят).
+      if (tenant.delivery_paused_until && tenant.delivery_paused_until > now()) {
+        return json(res, 409, { error: 'delivery_paused', message: 'Доставка временно приостановлена. Доступен самовывоз' });
+      }
       if (!String(d.entrance || '').trim() || !String(d.floor || '').trim() || !String(d.apt || '').trim())
         return json(res, 400, { error: 'need_address', message: 'Укажите подъезд, этаж и апартаменты' });
     }
+    // Комментарий клиента к заказу — до 300 символов.
+    const comment = String(body.comment || '').trim().slice(0, 300);
     // Наценка за доставку добавляется к сумме заказа (самовывоз — бесплатно).
     const deliveryFee = fulfillment === 'delivery' ? (tenant.delivery_fee_rub ?? 50) : 0;
     const packagingFee = tenant.packaging_fee_rub ?? 0;
@@ -438,11 +458,11 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
       const number = nextOrderNumber(tenant.id);
       db.prepare(
         `INSERT INTO orders (id, tenant_id, number, tg_user_id, customer_name, status, fulfillment,
-          addr_entrance, addr_floor, addr_apt, total_rub, payment_status, idem_key, customer_email, items_json, history_json, created_at, updated_at)
-         VALUES (?,?,?,?,?,'created',?,?,?,?,?,?,?,?,?,?,?,?)`,
+          addr_entrance, addr_floor, addr_apt, total_rub, payment_status, idem_key, customer_email, comment, items_json, history_json, created_at, updated_at)
+         VALUES (?,?,?,?,?,'created',?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ).run(id, tenant.id, number, String(user.id), name, fulfillment,
         d.entrance || null, d.floor || null, d.apt || null, orderTotal, online ? 'pending' : 'none', idemKey,
-        email || null, JSON.stringify(priced.items), JSON.stringify([{ status: 'created', at: ts }]), ts, ts);
+        email || null, comment || null, JSON.stringify(priced.items), JSON.stringify([{ status: 'created', at: ts }]), ts, ts);
       o = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
     }
     const number = o.number;
@@ -648,13 +668,67 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     const count = counted.length;
     const hours = Array.from({ length: 24 }, () => 0);
     for (const r of counted) hours[localHour(tenant, r.created_at)]++;
+    // Сколько всего человек пользуется ботом кофейни (уникальные клиенты).
+    const clients = db.prepare('SELECT COUNT(*) n FROM clients WHERE tenant_id = ?').get(tenant.id).n;
     return json(res, 200, {
       revenue, count, avg: count ? Math.round(revenue / count) : 0,
-      cancelled: rows.length - counted.length, hours,
+      cancelled: rows.length - counted.length, hours, clients,
       // Владельцы смотрят на одни и те же данные — показываем, за какой
       // период и в каком поясе они посчитаны.
       since: dayStart, tz: (shopSchedule(tenant) || {}).tz || 'Europe/Moscow',
     });
+  }
+
+  // Владелец: текущие настройки кофейни (телефон, доставка).
+  if (path === '/api/staff/settings' && method === 'GET') {
+    if (!ADMIN_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
+    const paused = tenant.delivery_paused_until && tenant.delivery_paused_until > now();
+    return json(res, 200, {
+      phone: tenant.phone || '',
+      deliveryEnabled: !!tenant.delivery_enabled,
+      deliveryPausedUntil: paused ? tenant.delivery_paused_until : 0,
+    });
+  }
+
+  // Владелец: телефон кофейни и постоянное вкл/выкл доставки.
+  if (path === '/api/staff/settings' && method === 'POST') {
+    if (!ADMIN_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
+    const b = await readBody(req);
+    if (b.phone !== undefined) {
+      db.prepare('UPDATE tenants SET phone = ? WHERE id = ?').run(String(b.phone).trim().slice(0, 32) || null, tenant.id);
+    }
+    if (b.deliveryEnabled !== undefined) {
+      db.prepare('UPDATE tenants SET delivery_enabled = ? WHERE id = ?').run(b.deliveryEnabled ? 1 : 0, tenant.id);
+    }
+    return json(res, 200, { ok: true });
+  }
+
+  // Владелец: пауза доставки. minutes>0 — до now+minutes; until (мс) — до времени;
+  // 0/отсутствие — снять паузу.
+  if (path === '/api/staff/delivery-pause' && method === 'POST') {
+    if (!ADMIN_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
+    const b = await readBody(req);
+    let until = 0;
+    if (Number(b.minutes) > 0) until = now() + Math.min(Number(b.minutes), 24 * 60) * 60_000;
+    else if (Number(b.until) > now()) until = Number(b.until);
+    db.prepare('UPDATE tenants SET delivery_paused_until = ? WHERE id = ?').run(until, tenant.id);
+    return json(res, 200, { ok: true, deliveryPausedUntil: until });
+  }
+
+  // Владелец: изменить цену/название/доступность товара.
+  if (path === '/api/staff/product' && method === 'POST') {
+    if (!ADMIN_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
+    const b = await readBody(req);
+    const p = db.prepare('SELECT * FROM products WHERE id = ? AND tenant_id = ?').get(String(b.productId), tenant.id);
+    if (!p) return json(res, 404, { error: 'not_found' });
+    const price = b.price !== undefined ? Math.max(0, Math.round(Number(b.price))) : p.price_rub;
+    if (!Number.isFinite(price)) return json(res, 400, { error: 'bad_price', message: 'Некорректная цена' });
+    const name = b.name !== undefined ? String(b.name).trim().slice(0, 120) : p.name;
+    if (!name) return json(res, 400, { error: 'bad_name', message: 'Название не может быть пустым' });
+    const available = b.available !== undefined ? (b.available ? 1 : 0) : p.available;
+    db.prepare('UPDATE products SET price_rub = ?, name = ?, available = ? WHERE id = ? AND tenant_id = ?')
+      .run(price, name, available, p.id, tenant.id);
+    return json(res, 200, { ok: true });
   }
 
   // Поллинг обновлений: заказы, изменившиеся после since (мс).

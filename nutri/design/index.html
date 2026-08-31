@@ -6,8 +6,8 @@
     <title>Любовь-Марковь | Мини-приложение</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20260826c">
-    <script src="config.js?v=20260826c"></script>
+    <link rel="stylesheet" href="style.css?v=20260827a">
+    <script src="config.js?v=20260827a"></script>
 </head>
 <body>
     <!-- Превью: переключатель ролей (плавает над «телефоном») -->
@@ -27,7 +27,7 @@
             <!-- Меню -->
             <main id="view-client-menu" class="view active">
                 <div class="brand-hero">
-                    <div class="logo-panel"><img class="logo-img" src="logo.png?v=20260826c" alt="Любовь-Марковь" width="951" height="411"></div>
+                    <div class="logo-panel"><img class="logo-img" src="logo.png?v=20260827a" alt="Любовь-Марковь" width="951" height="411"></div>
                 </div>
                 <h1 class="page-title">Меню кофейни</h1>
                 <div class="shop-banner" id="shop-banner"></div>
@@ -111,6 +111,7 @@
                     <div class="stat-tile"><div class="stat-label">Заказов</div><div class="stat-value">—</div></div>
                     <div class="stat-tile"><div class="stat-label">Средний чек</div><div class="stat-value">—</div></div>
                     <div class="stat-tile"><div class="stat-label">Отменённых</div><div class="stat-value">—</div></div>
+                    <div class="stat-tile"><div class="stat-label">Клиентов в боте</div><div class="stat-value" id="stat-clients">—</div></div>
                 </div>
 
                 <div class="chart-card">
@@ -129,6 +130,8 @@
                         <div class="bar" style="height:4%"><span>18</span></div>
                     </div>
                 </div>
+
+                <div class="settings-card" id="owner-settings"></div>
             </main>
 
             <main id="view-owner-menu" class="view">
@@ -162,7 +165,7 @@
         <div class="toast" id="toast"></div>
     </div>
 
-    <script src="script.js?v=20260826c"></script>
+    <script src="script.js?v=20260827a"></script>
 </body>
 </html>
 

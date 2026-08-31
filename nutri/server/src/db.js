@@ -154,6 +154,23 @@ try { db.exec('ALTER TABLE orders ADD COLUMN customer_email TEXT'); } catch {}
 try { db.exec('ALTER TABLE tenants ADD COLUMN hours_json TEXT'); } catch {}
 // Стоп-лист распространяется и на добавки: закончилось молоко — снимаем опцию.
 try { db.exec('ALTER TABLE modifier_options ADD COLUMN available INTEGER NOT NULL DEFAULT 1'); } catch {}
+// Комментарий клиента к заказу (без сахара, поострее и т.п.).
+try { db.exec('ALTER TABLE orders ADD COLUMN comment TEXT'); } catch {}
+// Телефон кофейни (кнопка «Позвонить» у клиента).
+try { db.exec('ALTER TABLE tenants ADD COLUMN phone TEXT'); } catch {}
+// Пауза доставки: 0 — доставка по расписанию; timestamp — не раньше него.
+try { db.exec('ALTER TABLE tenants ADD COLUMN delivery_paused_until INTEGER NOT NULL DEFAULT 0'); } catch {}
+
+// Клиенты кофейни — для счётчика «сколько человек пользуется ботом».
+// Пишем при каждом входе в мини-апп; повтор игнорируется.
+db.exec(`
+CREATE TABLE IF NOT EXISTS clients (
+  tenant_id  TEXT NOT NULL,
+  tg_user_id TEXT NOT NULL,
+  name       TEXT,
+  first_seen INTEGER NOT NULL,
+  PRIMARY KEY (tenant_id, tg_user_id)
+);`);
 
 export function now() {
   return Date.now();

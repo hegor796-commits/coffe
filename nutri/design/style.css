@@ -377,3 +377,28 @@ body.in-telegram .close-btn { display: none; }
 .stop-head:first-child { margin-top: 4px; }
 .sr-sub { display: block; font-style: normal; font-size: 11.5px; font-weight: 600; color: var(--ink-soft); margin-top: 2px; }
 .thumb-mod { display: flex; align-items: center; justify-content: center; background: var(--bg-2); color: var(--ink-soft); }
+
+/* ---- Комментарий к заказу, кнопка звонка ---- */
+.cart-comment { margin-top: 14px; }
+.call-btn { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; text-decoration: none;
+    background: var(--card); border: 1px solid var(--line); color: var(--brand); font-family: var(--f-sans);
+    font-weight: 800; font-size: 14px; padding: 13px; border-radius: 16px; box-shadow: var(--sh-sm); }
+.ticket-comment { margin: 8px 0 0; padding: 8px 11px; background: #FDF6E9; border-radius: 11px;
+    font-size: 12.5px; line-height: 1.4; color: #6E5A34; font-weight: 600; }
+
+/* ---- Архив: раскрытие состава ---- */
+.archive-card { display: block; cursor: pointer; }
+.archive-card .order-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.archive-detail { max-height: 0; overflow: hidden; transition: max-height 0.25s ease; }
+.archive-card.open .archive-detail { max-height: 500px; padding-top: 10px; }
+.archive-total { margin-top: 6px; font-size: 12.5px; font-weight: 700; color: var(--ink-soft); }
+
+/* ---- Редактирование товара / настройки владельца ---- */
+.list-row.editable { cursor: pointer; }
+.edit-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0;
+    font-size: 14px; font-weight: 700; color: var(--ink); }
+.settings-card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 18px; margin-top: 16px; box-shadow: var(--sh-sm); }
+.settings-card h3 { font-family: var(--f-display); font-size: 16px; font-weight: 600; margin: 0 0 12px; color: var(--ink); }
+.pause-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0 12px; }
+.pause-label { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.pause-note { font-size: 13px; font-weight: 700; color: #7A4A18; flex: 1; }
