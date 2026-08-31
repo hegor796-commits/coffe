@@ -170,6 +170,7 @@ let HOURS = null;                // режим работы кофейни (из
 let MODIFIER_GROUPS = [];        // добавки для экрана стоп-листа (только персоналу)
 let PHONE = '';                  // телефон кофейни (кнопка «Позвонить»)
 let DELIVERY_ENABLED = true;     // доставка включена и не на паузе
+let ALL_CATEGORIES = [];         // категории с id — для формы добавления товара
 let payEmail = '';               // e-mail для кассового чека (запоминаем между заказами)
 let orderComment = '';           // комментарий клиента к текущему заказу
 const delivery = { entrance: '', floor: '', apt: '' };
@@ -1172,15 +1173,107 @@ function renderOwnerMenu() {
     const wrap = document.getElementById('owner-menu-list');
     if (!wrap) return;
     // Тап по позиции — редактирование цены/названия/наличия (только LIVE).
-    wrap.innerHTML = MENU.map((p) => `
+    const addBtn = LIVE ? `<button class="main-btn auto add-product-btn" onclick="openProductCreate()">+ Добавить позицию</button>` : '';
+    wrap.innerHTML = addBtn + MENU.map((p) => `
         <div class="list-row${LIVE ? ' editable' : ''}" ${LIVE ? `onclick="openProductEdit('${p.id}')"` : ''}>
-            <div class="lr-ic">${cupArt()}</div>
+            <div class="lr-ic">${p.photo_url ? `<img class="lr-photo" src="${p.photo_url}" alt="">` : cupArt()}</div>
             <div class="lr-main">
                 <div class="lr-title">${p.name}</div>
                 <div class="lr-sub">${p.categoryName}${p.available ? '' : ' · в стопе'}</div>
             </div>
             <div class="lr-price">${money(p.price)}${LIVE ? ' ✏️' : ''}</div>
         </div>`).join('');
+}
+
+// Сжатие выбранного фото на клиенте: длинная сторона до 1000px, JPEG.
+// Иначе с телефона улетают снимки по несколько мегабайт.
+function compressImage(file) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = () => { img.src = reader.result; };
+        reader.onerror = reject;
+        img.onload = () => {
+            const max = 1000;
+            let { width, height } = img;
+            if (width > max || height > max) {
+                if (width > height) { height = Math.round(height * max / width); width = max; }
+                else { width = Math.round(width * max / height); height = max; }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width; canvas.height = height;
+            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+async function onPhotoPick(input, previewId, urlField) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const prev = document.getElementById(previewId);
+    if (prev) prev.textContent = 'Загрузка…';
+    try {
+        const dataUrl = await compressImage(file);
+        const r = await api('/api/staff/upload', 'POST', { dataUrl });
+        if (!r.ok) { if (prev) prev.textContent = ''; toast((r.data && r.data.message) || 'Не удалось загрузить фото'); return; }
+        document.getElementById(urlField).value = r.data.url;
+        if (prev) prev.innerHTML = `<img class="photo-preview" src="${r.data.url}" alt="">`;
+    } catch { if (prev) prev.textContent = ''; toast('Не удалось обработать фото'); }
+}
+
+function openProductCreate() {
+    const el = document.getElementById('sheet');
+    const cats = ALL_CATEGORIES.map((c) => `<option value="${c.id}">${c.name}</option>`).join('');
+    el.innerHTML = `
+        <div class="sheet-scrim" onclick="closeSheet()"></div>
+        <div class="sheet-panel">
+            <div class="sheet-grab"></div>
+            <div class="sheet-head">
+                <div><div class="sheet-name">Новая позиция</div></div>
+                <button class="sheet-x" onclick="closeSheet()" aria-label="Закрыть">✕</button>
+            </div>
+            <label class="field"><span>Категория</span>
+                <select id="np-cat" class="field-select">${cats}</select></label>
+            <label class="field"><span>Название</span><input id="np-name" maxlength="120" placeholder="Напр. Раф лавандовый"></label>
+            <label class="field"><span>Цена, ₽</span><input id="np-price" inputmode="numeric" placeholder="0"></label>
+            <label class="field"><span>Описание (необязательно)</span><input id="np-desc" maxlength="500" placeholder="Пара слов о напитке"></label>
+            <div class="field"><span>Фото (необязательно)</span>
+                <div id="np-preview" class="photo-slot"></div>
+                <input type="hidden" id="np-photo">
+                <label class="photo-pick">Выбрать фото
+                    <input type="file" accept="image/*" hidden onchange="onPhotoPick(this,'np-preview','np-photo')"></label>
+            </div>
+            <div class="sheet-foot">
+                <button class="main-btn auto" onclick="saveProductCreate()">Добавить</button>
+            </div>
+        </div>`;
+    requestAnimationFrame(() => el.classList.add('show'));
+}
+async function saveProductCreate() {
+    const categoryId = document.getElementById('np-cat').value;
+    const name = document.getElementById('np-name').value.trim();
+    const price = Math.round(Number(document.getElementById('np-price').value));
+    const description = document.getElementById('np-desc').value.trim();
+    const photoUrl = document.getElementById('np-photo').value;
+    if (!name) { toast('Укажите название'); return; }
+    if (!Number.isFinite(price) || price < 0) { toast('Некорректная цена'); return; }
+    const r = await api('/api/staff/product/create', 'POST', { categoryId, name, price, description, photoUrl });
+    if (!r.ok) { toast((r.data && r.data.message) || 'Не удалось добавить'); return; }
+    closeSheet();
+    await reloadMenu(); renderOwnerMenu();
+    toast('Позиция добавлена ✓');
+}
+async function deleteProduct(productId) {
+    const p = findProduct(productId);
+    if (!p) return;
+    if (!confirm(`Удалить «${p.name}»? Это действие нельзя отменить.`)) return;
+    const r = await api('/api/staff/product/delete', 'POST', { productId });
+    if (!r.ok) { toast('Не удалось удалить'); return; }
+    closeSheet();
+    await reloadMenu(); renderOwnerMenu();
+    toast('Позиция удалена');
 }
 
 // Шторка редактирования товара владельцем — цена, название, наличие.
@@ -1200,6 +1293,12 @@ function openProductEdit(productId) {
                 <input id="edit-name" value="${p.name.replace(/"/g, '&quot;')}" maxlength="120"></label>
             <label class="field"><span>Цена, ₽</span>
                 <input id="edit-price" inputmode="numeric" value="${p.price}"></label>
+            <div class="field"><span>Фото</span>
+                <div id="edit-preview" class="photo-slot">${p.photo_url ? `<img class="photo-preview" src="${p.photo_url}" alt="">` : ''}</div>
+                <input type="hidden" id="edit-photo" value="${p.photo_url || ''}">
+                <label class="photo-pick">${p.photo_url ? 'Заменить фото' : 'Выбрать фото'}
+                    <input type="file" accept="image/*" hidden onchange="onPhotoPick(this,'edit-preview','edit-photo')"></label>
+            </div>
             <label class="edit-toggle">
                 <span>В наличии</span>
                 <label class="switch"><input type="checkbox" id="edit-avail" ${p.available ? 'checked' : ''}><span class="slider"></span></label>
@@ -1207,6 +1306,7 @@ function openProductEdit(productId) {
             <div class="sheet-foot">
                 <button class="main-btn auto" onclick="saveProductEdit('${p.id}')">Сохранить</button>
             </div>
+            <button class="delete-link" onclick="deleteProduct('${p.id}')">Удалить позицию</button>
         </div>`;
     requestAnimationFrame(() => el.classList.add('show'));
 }
@@ -1214,13 +1314,14 @@ async function saveProductEdit(productId) {
     const name = document.getElementById('edit-name').value.trim();
     const price = Math.round(Number(document.getElementById('edit-price').value));
     const available = document.getElementById('edit-avail').checked;
+    const photoUrl = document.getElementById('edit-photo').value;
     if (!name) { toast('Название не может быть пустым'); return; }
     if (!Number.isFinite(price) || price < 0) { toast('Некорректная цена'); return; }
-    const r = await api('/api/staff/product', 'POST', { productId, name, price, available });
+    const r = await api('/api/staff/product', 'POST', { productId, name, price, available, photoUrl });
     if (!r.ok) { toast((r.data && r.data.message) || 'Не удалось сохранить'); return; }
     // Обновляем локально и перерисовываем — без перезагрузки всего меню.
     const p = findProduct(productId);
-    if (p) { p.name = name; p.price = price; p.available = available; }
+    if (p) { p.name = name; p.price = price; p.available = available; p.photo_url = photoUrl || null; }
     closeSheet();
     renderOwnerMenu(); renderMenu();
     toast('Сохранено ✓');
@@ -1394,6 +1495,7 @@ function applyBootstrap(data) {
     MODIFIER_GROUPS = data.modifierGroups || [];
     if (data.tenant) PHONE = data.tenant.phone || '';
     if (data.tenant) DELIVERY_ENABLED = data.tenant.deliveryEnabled !== false;
+    ALL_CATEGORIES = data.categories || [];
     const catNameById = new Map(data.categories.map((c) => [c.id, c.name]));
     const menuCatIds = new Set(data.menu.map((p) => p.categoryId));
     CATEGORIES_LIST = data.categories.filter((c) => menuCatIds.has(c.id)).map((c) => c.name);

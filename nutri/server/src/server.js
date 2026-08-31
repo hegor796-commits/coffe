@@ -2,7 +2,8 @@
 // Zero-dependency: node:http + node:sqlite + node:crypto.
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, writeFile, unlink } from 'node:fs/promises';
+import { mkdirSync } from 'node:fs';
 import { join, normalize, extname } from 'node:path';
 import { config } from './config.js';
 import { db, now, nextOrderNumber, expirePendingOrders, PENDING_TTL_MIN } from './db.js';
@@ -37,13 +38,27 @@ function json(res, status, obj) {
   });
   res.end(JSON.stringify(obj));
 }
-function readBody(req) {
+function readBody(req, limit = 1e6) {
   return new Promise((resolve) => {
     let data = '';
-    req.on('data', (c) => { data += c; if (data.length > 1e6) req.destroy(); });
+    req.on('data', (c) => { data += c; if (data.length > limit) req.destroy(); });
     req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch { resolve({}); } });
     req.on('error', () => resolve({}));
   });
+}
+
+// Загруженные владельцем фото лежат на Volume (/data/uploads) — переживают
+// деплой, в отличие от файлов в образе. Отдаём их с того же домена.
+const uploadsDir = join(config.dataDir, 'uploads');
+mkdirSync(uploadsDir, { recursive: true });
+async function serveUpload(res, pathname) {
+  const name = pathname.slice('/uploads/'.length);
+  if (!/^[a-f0-9]{32}\.(jpg|jpeg|png|webp)$/i.test(name)) { res.writeHead(404); return res.end('Not found'); }
+  try {
+    const buf = await readFile(join(uploadsDir, name));
+    res.writeHead(200, { 'Content-Type': MIME['.' + name.split('.').pop().toLowerCase()] || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000' });
+    res.end(buf);
+  } catch { res.writeHead(404); res.end('Not found'); }
 }
 
 // ---------- Auth: определяем кофейню по slug и пользователя по подписи ----------
@@ -266,6 +281,9 @@ const server = http.createServer(async (req, res) => {
       // и роняет весь процесс — один битый заказ убивал сервер.
       return await apiRoutes(req, res, path, method, auth);
     }
+
+    // --- Загруженные фото товаров ---
+    if (path.startsWith('/uploads/') && method === 'GET') return await serveUpload(res, path);
 
     // --- Иначе статика мини-аппа ---
     if (method === 'GET') return await serveStatic(req, res, path);
@@ -726,8 +744,61 @@ async function apiRoutes(req, res, path, method, { tenant, user, role }) {
     const name = b.name !== undefined ? String(b.name).trim().slice(0, 120) : p.name;
     if (!name) return json(res, 400, { error: 'bad_name', message: 'Название не может быть пустым' });
     const available = b.available !== undefined ? (b.available ? 1 : 0) : p.available;
-    db.prepare('UPDATE products SET price_rub = ?, name = ?, available = ? WHERE id = ? AND tenant_id = ?')
-      .run(price, name, available, p.id, tenant.id);
+    const photoUrl = b.photoUrl !== undefined ? (String(b.photoUrl).trim().slice(0, 400) || null) : p.photo_url;
+    db.prepare('UPDATE products SET price_rub = ?, name = ?, available = ?, photo_url = ? WHERE id = ? AND tenant_id = ?')
+      .run(price, name, available, photoUrl, p.id, tenant.id);
+    return json(res, 200, { ok: true });
+  }
+
+  // Владелец: загрузка фото товара (base64 data URL). Возвращает URL картинки.
+  if (path === '/api/staff/upload' && method === 'POST') {
+    if (!ADMIN_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
+    const b = await readBody(req, 6 * 1024 * 1024);   // ~6 МБ на сжатое фото
+    const m = String(b.dataUrl || '').match(/^data:image\/(jpe?g|png|webp);base64,(.+)$/);
+    if (!m) return json(res, 400, { error: 'bad_image', message: 'Неверный формат картинки' });
+    const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > 3 * 1024 * 1024) return json(res, 413, { error: 'too_big', message: 'Фото слишком большое' });
+    const fname = crypto.randomBytes(16).toString('hex') + '.' + ext;
+    try { await writeFile(join(uploadsDir, fname), buf); }
+    catch (e) { console.error('[upload]', e && e.message); return json(res, 500, { error: 'save_failed' }); }
+    const base = config.publicUrl || '';
+    return json(res, 200, { ok: true, url: `${base}/uploads/${fname}` });
+  }
+
+  // Владелец: создать новый товар.
+  if (path === '/api/staff/product/create' && method === 'POST') {
+    if (!ADMIN_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
+    const b = await readBody(req);
+    const name = String(b.name || '').trim().slice(0, 120);
+    if (!name) return json(res, 400, { error: 'bad_name', message: 'Укажите название' });
+    const price = Math.max(0, Math.round(Number(b.price)));
+    if (!Number.isFinite(price)) return json(res, 400, { error: 'bad_price', message: 'Некорректная цена' });
+    const cat = db.prepare('SELECT id FROM categories WHERE id = ? AND tenant_id = ?').get(String(b.categoryId), tenant.id);
+    if (!cat) return json(res, 400, { error: 'bad_category', message: 'Выберите категорию' });
+    const description = String(b.description || '').trim().slice(0, 500) || null;
+    const photoUrl = String(b.photoUrl || '').trim().slice(0, 400) || null;
+    const maxSort = db.prepare('SELECT COALESCE(MAX(sort), 0) m FROM products WHERE tenant_id = ?').get(tenant.id).m;
+    const id = uid();
+    db.prepare(
+      `INSERT INTO products (id, tenant_id, category_id, name, description, price_rub, photo_url, sort, available)
+       VALUES (?,?,?,?,?,?,?,?,1)`,
+    ).run(id, tenant.id, cat.id, name, description, price, photoUrl, maxSort + 1);
+    return json(res, 200, { ok: true, id });
+  }
+
+  // Владелец: удалить товар.
+  if (path === '/api/staff/product/delete' && method === 'POST') {
+    if (!ADMIN_ROLES.includes(role)) return json(res, 403, { error: 'forbidden' });
+    const b = await readBody(req);
+    const p = db.prepare('SELECT * FROM products WHERE id = ? AND tenant_id = ?').get(String(b.productId), tenant.id);
+    if (!p) return json(res, 404, { error: 'not_found' });
+    db.prepare('DELETE FROM products WHERE id = ? AND tenant_id = ?').run(p.id, tenant.id);
+    // Своё загруженное фото подчищаем, чужие ссылки не трогаем.
+    if (p.photo_url && p.photo_url.includes('/uploads/')) {
+      const f = p.photo_url.split('/uploads/')[1];
+      if (/^[a-f0-9]{32}\.(jpg|jpeg|png|webp)$/i.test(f)) unlink(join(uploadsDir, f)).catch(() => {});
+    }
     return json(res, 200, { ok: true });
   }
 
