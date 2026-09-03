@@ -1531,7 +1531,10 @@ async function boot() {
     // владельцу вернём его ниже (уже без кнопки «Клиент»).
     const willBeLive = !!(tg && tg.initData && API_BASE && !API_BASE.includes('REPLACE-WITH'));
     const previewControls = document.querySelector('.preview-controls');
-    if (willBeLive && previewControls) previewControls.hidden = true;
+    // Именно inline display:none, а не атрибут hidden: у .preview-controls в CSS
+    // задан display:flex, и он по специфичности перебивает [hidden] — переключатель
+    // так и оставался видимым у клиента до конца загрузки.
+    if (willBeLive && previewControls) previewControls.style.display = 'none';
     // Пока грузится меню (на плохой связи это долго) — показываем, что идёт
     // загрузка, а не пустой экран.
     if (willBeLive) {
@@ -1588,7 +1591,7 @@ async function boot() {
                 // Владелец/менеджер часто работает и за стойкой — возвращаем
                 // мини-переключатель «Бариста / Владелец» (без «Клиент»).
                 switcher?.querySelector('#rs-client')?.remove();
-                if (switcher) switcher.hidden = false;
+                if (switcher) switcher.style.display = '';   // вернуть (без «Клиент»)
                 switchRole('owner');
                 loadOwnerSummary(); loadOwnerSettings(); loadOwnerTeam();   // сразу подтягиваем реальные цифры
             } else {
